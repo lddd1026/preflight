@@ -1,0 +1,47 @@
+id: general/unbounded-loop
+name: 循环没有迭代上限
+severity: high
+applies_to: both
+audience: both
+detect:
+  kind: ast
+  checker: unbounded-loop
+  params:
+    # 只在循环体里出现这些才报 —— 纯计算循环死循环不花钱，报了就是噪音
+    external_call_hints:
+      - completion
+      - acompletion
+      - requests.
+      - httpx.
+      - client.
+      - session.
+      - cursor.
+      - execute
+      - send
+      - publish
+    # 这些名字的变量出现在循环条件里，就算有上限
+    guard_names:
+      - max_steps
+      - max_iterations
+      - max_retries
+      - limit
+      - budget
+      - deadline
+      - timeout
+incident: |
+  死循环不只是卡住 —— **它在持续花钱**。
+
+  agent 的主循环天然有这个风险：模型永远在调工具、永远不交结论，
+  循环就一直转下去，每转一圈就是一次 API 调用。
+
+  所以"步数上限"和"成本熔断"是两件事：前者防卡死，后者防账单。
+  这条规则查的是**循环层面**有没有上限，熔断在 agent 规则里另有一条。
+report: |
+  第 {line} 行的 {kind} 循环没有迭代上限，而循环体里有外部调用（{hint}）。
+  → 一旦条件永远为真，它会一直调用下去并持续计费。
+fix: |
+  加一个上限变量（max_steps / max_iterations），并在撞到上限时**记录原因**，
+  而不是静默 break —— 否则复盘时看不出"是它自己停了还是被停了"。
+refs:
+  - RULES.md §2
+stage: S1

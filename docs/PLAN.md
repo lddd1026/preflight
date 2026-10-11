@@ -41,16 +41,21 @@ preflight/
 │   │
 │   ├── core/           ← 引擎（把知识跑起来）
 │   │   ├── models.py       Finding / Claim / Rule / Mechanism / Review / Waiver
+│   │   ├── specs.py        **检查器声明表**（有哪几种检测能力）
 │   │   ├── registry.py     加载 + schema 校验 + profile 过滤 + 矩阵视图
+│   │   ├── report.py       报告渲染（终端 / Markdown / JSON）
 │   │   ├── engine.py       三阶段调度：确定性 → 文档 → 人工
-│   │   └── report.py       报告渲染（终端 / Markdown）
+│   │   └── ...
 │   │
 │   ├── detect/         ← 确定性检测器（零 LLM）
-│   │   ├── base.py         Detector 接口
-│   │   ├── ast_det.py      Python AST：调用点 / 符号 / 关键字参数
-│   │   ├── text_det.py     正则 / 字符串集合比对
-│   │   ├── exists_det.py   文件 / 目录 / 配置项存在性
-│   │   └── adapters/       外部工具编排（pip-audit / gitleaks / ruff）
+│   │   ├── repo.py         仓库扫描（忽略规则、glob、读文本、解析 AST）
+│   │   ├── base.py         CheckContext + Checker 协议
+│   │   ├── generic.py      通用检查器：exists / text（靠参数表达一类规则）
+│   │   ├── ast_checks.py   具名 AST 检查器 ×3
+│   │   ├── cross_checks.py 跨文件检查器 ×4
+│   │   ├── ignore.py       忽略机制（`preflight: ignore` / `ignore-file`）
+│   │   ├── registry.py     检查器实现表（与 core/specs.py 一一对应）
+│   │   └── engine.py       调度：跑规则 → 产 Review
 │   │
 │   ├── understand/     ← 文档理解层（LLM）
 │   │   ├── discover.py     文档发现与分类
@@ -109,7 +114,7 @@ runtime 被 core / understand 使用
 | 阶段 | 名称 | 预估 | 状态 | 里程碑 |
 | --- | --- | --- | --- | --- |
 | **S0** | 地基与知识格式 | 3 天 | ✅ | |
-| **S1** | 确定性检测引擎 | 1 周 | ⬜ | |
+| **S1** | 确定性检测引擎 | 1 周 | ✅ | |
 | **S2** | 外部工具编排 | 4 天 | ⬜ | |
 | **S3** | agent 专项规则 | 1 周 | ⬜ | 🏁 **v0.1 可发布** |
 | **S4** | 文档发现 + 声明抽取 | 1.5 周 | ⬜ | |
@@ -152,7 +157,14 @@ runtime 被 core / understand 使用
 
 ---
 
-### S1 · 确定性检测引擎（1 周）
+### S1 · 确定性检测引擎（1 周）  ✅ 已完成
+
+> 实际结果见 [PROGRESS.md](PROGRESS.md) 的 S1 章节 —— 包括**真跑一遍才发现的那 8 个缺陷**。
+> 以下是当初的计划，保持原样以便对照。
+>
+> 两处与计划的偏差：① 忽略机制和 `SkippedRule` 提前到 S1（正例夹具需要前者，
+> 语料里的后阶段规则需要后者）；② 新增 `core/specs.py` 检查器声明表
+> （S0 的"每 kind 一组参数"不够用）。
 
 **🎯 目标**：能对一个真实仓库跑出确定性的发现，输出可读报告。**全程零 LLM 调用。**
 

@@ -8,6 +8,7 @@ S0 阶段只有四条命令：``version`` / ``list-rules`` / ``explain`` / ``kno
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import typer
@@ -22,6 +23,13 @@ from preflight.core.registry import (
     KnowledgeLoadError,
     load_knowledge,
 )
+from preflight.core.report import (
+    render_json,
+    render_markdown,
+    render_terminal,
+    write_report,
+)
+from preflight.detect.engine import run_path
 
 app = typer.Typer(
     name="preflight",
@@ -103,6 +111,120 @@ def _severity_text(severity: Severity) -> str:
 def version() -> None:
     """打印版本号。"""
     console.print(f"preflight [bold cyan]{__version__}[/bold cyan]")
+
+
+@app.command("run")
+def run_cmd(
+    path: Path = typer.Argument(  # noqa: B008
+        Path("."),
+        help="要检查的项目目录",
+    ),
+    profile: str = typer.Option(
+        "cli-oss",
+        "--profile",
+        "-p",
+        help="场景档案，决定跑哪些规则、门禁多严",
+    ),
+    fmt: str = typer.Option(
+        "terminal",
+        "--format",
+        "-f",
+        help="输出格式：terminal / markdown / json",
+    ),
+    out: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--out",
+        "-o",
+        help="把报告写到文件（不写就只打印）",
+    ),
+    fail_on: str | None = typer.Option(
+        None,
+        "--fail-on",
+        help="覆盖档案的门禁级别：blocker / high / medium / info",
+    ),
+    full: bool = typer.Option(False, "--full", help="连修复建议和血案一起打印"),
+) -> None:
+    """跑一次上线前评审。
+
+    退出码：``NO-GO`` → 1，其余 → 0。
+
+    ⚠️ ``INCOMPLETE``（有规则没跑成）返回 **0** —— 检查器没实现完是**这个工具**
+    的状态，不是被检查项目的问题，拿它拦住别人的 CI 是耍流氓。
+    但它会被显著地打印出来，不会和通过混在一起。
+    """
+    knowledge = _load()
+
+    if profile not in knowledge.profiles:
+        console.print(f"[red]没有这个档案：{profile}[/red]")
+        console.print(f"[dim]可用档案：{', '.join(sorted(knowledge.profiles))}[/dim]")
+        raise typer.Exit(code=1)
+
+    scene = knowledge.profiles[profile]
+    gate = scene.fail_on
+    if fail_on is not None:
+        try:
+            gate = Severity(fail_on)
+        except ValueError:
+            console.print(f"[red]没有这个级别：{fail_on}[/red]")
+            console.print(f"[dim]可用：{', '.join(s.value for s in Severity)}[/dim]")
+            raise typer.Exit(code=1) from None
+
+    if not path.is_dir():
+        console.print(f"[red]不是一个目录：{path}[/red]")
+        raise typer.Exit(code=1)
+
+    rules = knowledge.select(profile)
+    review = run_path(
+        path,
+        rules=rules,
+        profile_id=profile,
+        fail_on=gate,
+        knowledge_digest=knowledge.digest(),
+    )
+
+    if fmt == "terminal":
+        render_terminal(review, console, full=full)
+    elif fmt == "markdown":
+        _emit_raw(render_markdown(review))
+    elif fmt == "json":
+        _emit_raw(render_json(review))
+    else:
+        console.print(f"[red]不认识的格式：{fmt}[/red]（可用：terminal / markdown / json）")
+        raise typer.Exit(code=1)
+
+    if out is not None:
+        content = render_markdown(review) if fmt == "terminal" else _render_for(fmt, review)
+        write_report(out, content)
+        console.print(f"\n[dim]报告已写入 {_display_path(out)}[/dim]")
+
+    raise typer.Exit(code=review.exit_code)
+
+
+def _emit_raw(content: str) -> None:
+    """把机器可读的输出**原样**写到 stdout。
+
+    ⚠️ 不能用 ``console.print``：rich 会按控制台宽度软折行，
+    于是 ``--format json`` 输出一个**行内断掉的 JSON** ——
+    ``json.loads`` 直接报 "Invalid control character"。
+
+    这个 bug 是 CLI 测试抓到的：单元测试里 ``render_json`` 完全正确，
+    错的是它经过控制台那一段路。**机器可读的输出不该被装饰**，
+    所以这里绕过 rich 直接写。
+
+    ``sys.stdout`` 而不是 click 的流：CliRunner 替换的就是它，
+    两边写的其实是同一个被捕获的流。
+    """
+    sys.stdout.write(content)
+    if not content.endswith("\n"):
+        sys.stdout.write("\n")
+    sys.stdout.flush()
+
+
+def _render_for(fmt: str, review: object) -> str:
+    from preflight.core.models import Review
+
+    assert isinstance(review, Review)
+    return render_json(review) if fmt == "json" else render_markdown(review)
 
 
 @app.command("list-rules")

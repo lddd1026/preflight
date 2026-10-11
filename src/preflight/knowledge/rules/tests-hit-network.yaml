@@ -1,0 +1,48 @@
+id: general/tests-hit-network
+name: 测试里出现真实网络调用
+severity: medium
+applies_to: both
+audience: both
+detect:
+  kind: ast
+  checker: tests-hit-network
+  params:
+    test_globs:
+      - test_*.py
+      - '*_test.py'
+      - tests/**/*.py
+    network_modules:
+      - requests
+      - httpx
+      - aiohttp
+      - urllib.request
+      - socket
+    # 同一函数里出现这些，说明这个调用是故意被 mock 包住的
+    mock_hints:
+      - patch
+      - monkeypatch
+      - Mock
+      - MagicMock
+      - responses
+      - respx
+      - vcr
+incident: |
+  会真发请求的测试有三个坏处，一个比一个严重：
+
+  ① **花钱** —— 每次 CI 都在真实调用第三方 API
+  ② **不稳定** —— 网络抖动、对方限流，测试随机红
+  ③ **最严重**：随机红的测试最后会被人 `@pytest.mark.skip` 掉。
+     那时你失去的不是这一个测试，而是**对整个测试套件的信任** ——
+     "它红了先跑一遍看看，还红就是环境问题" 这种习惯一旦形成，测试就废了。
+
+  正确做法：注入假客户端。真实网络调用挪到标记为 slow 的冒烟测试里，
+  并且**不在默认的 CI 里跑**。
+report: |
+  第 {line} 行在测试里调用了 {module}，而同一函数里没看到 mock。
+  → 这个测试会真的发网络请求：花钱、不稳定，最后大概率被 skip 掉。
+fix: |
+  注入假客户端（假 LLM / 假的 HTTP transport），或把这条测试标记成 slow
+  并移出默认 CI 集合。
+refs:
+  - RULES.md §2
+stage: S1

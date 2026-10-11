@@ -1,0 +1,40 @@
+id: general/unpinned-dependency-upper-bound
+name: 依赖没有主版本上界
+severity: info
+applies_to: both
+audience: both
+detect:
+  kind: text
+  checker: unpinned-dependency
+  params:
+    files:
+      - pyproject.toml
+      - requirements.txt
+      - setup.py
+    # 这些包不设上界是有意的（例如只依赖它的稳定接口）
+    allow_unpinned:
+      - pytest
+incident: |
+  依赖约束的正确写法是「**下界 = 实测过的版本，上界 = 下一个主版本**」：
+
+    litellm>=1.101,<2
+
+  只写 `litellm>=1.0` 有两个问题：
+
+  ① **下界撒谎**：声称支持 1.0，但用到的 `suppress_debug_info`、
+     `_hidden_params["response_cost"]`、`acompletion(timeout=...)` 都
+     不是 1.0 就有的 —— 等于把问题留给第一个装它的人。
+  ② **上界缺失**：下个月 2.0 发布，全新安装会静默装上它。
+     如果 2.0 改了接口，第一个报错的是**用户**，不是 CI。
+
+  这条报 info 不是 high：它不会立刻出事，但会在某个未来的早晨出事。
+report: |
+  第 {line} 行的依赖 {name} 没有主版本上界。
+  → 未来会静默升到不兼容的主版本，而报错的是用户。
+fix: |
+  写成 `name>=实测过的版本,<下一个主版本`。
+  下界要写你**真正测过**的那个版本 —— 声称支持一个从没跑过的版本，
+  等于把问题留给别人。
+refs:
+  - RULES.md §2
+stage: S1

@@ -34,22 +34,35 @@ def test_shipped_corpus_loads(shipped: Knowledge) -> None:
     后面加规则/机制时这个测试会红 —— 那正是要的效果：让你**有意识地**
     确认"这次新增的数量是对的"，而不是让语料悄悄长大。
 
-    （第一次触发就是 S0 加 ``general/env-not-ignored``：引擎一行没改，
-    只多了一个 YAML 文件，这里从 3 改成 4。这就是纪律 D4 的证据。）
+    （触发记录，这就是绊线该有的样子：
+    S0 加 ``general/env-not-ignored`` → 4 条；
+    S1 补齐 11 条通用规则 → **13 条**。）
     """
     assert shipped.counts == {
         "invariants": 6,
         "mechanisms": 3,
-        "rules": 4,
+        "rules": 13,
         "profiles": 3,
     }
 
 
 def test_shipped_rules_are_the_expected_ones(shipped: Knowledge) -> None:
     assert set(shipped.rules) == {
+        # 通用 11 条（S1）
         "general/hardcoded-secret",
         "general/env-not-ignored",
+        "general/config-name-drift",
+        "general/exception-swallowed",
+        "general/unbounded-loop",
+        "general/tests-hit-network",
+        "general/no-rollback-plan",
+        "general/no-runbook",
+        "general/no-test-layer",
+        "general/no-eval-fingerprint",
+        "general/unpinned-dependency-upper-bound",
+        # agent 专项 1 条（S3）
         "agent/no-request-timeout",
+        # 矩阵规则 1 条（机制 × 不变量）
         "message-queue/no-loss-backlog-recovery",
     }
 
@@ -309,7 +322,9 @@ def test_extra_root_without_conflict_just_adds(make_knowledge: Any) -> None:
     )
     knowledge = load_knowledge(extra=[extra])
     assert "company/extra-rule" in knowledge.rules
-    assert knowledge.counts["rules"] == 5, "内置 4 条 + 自定义 1 条"
+    # 数量从内置语料**派生**，不再写死 —— 绊线只该有一处
+    # （test_shipped_corpus_loads），别处再抄一遍只会让"加一条规则要改 N 个测试"。
+    assert knowledge.counts["rules"] == len(load_knowledge().rules) + 1
 
 
 # --------------------------------------------------------------------------

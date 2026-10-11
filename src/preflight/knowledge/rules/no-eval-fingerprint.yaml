@@ -1,0 +1,42 @@
+id: general/no-eval-fingerprint
+name: 评测集没有指纹
+severity: medium
+applies_to: both
+audience: both
+detect:
+  kind: exists
+  checker: no-eval-fingerprint
+  params:
+    eval_globs:
+      - eval
+      - evals
+      - benchmarks
+      - benchmark
+      - golden
+      - fixtures/eval*
+    fingerprint_hints:
+      - snapshot
+      - fingerprint
+      - digest
+      - sha256
+      - checksum
+      - golden
+incident: |
+  这条规则守护的是**「改进前 vs 改进后」这个对比本身**。
+
+  你在优化 prompt，跑一遍评测，准确率从 87% 涨到 91%。看起来是改对了。
+
+  但如果这中间有人顺手改了评测集（加了个场景、调了条日志），
+  那 91% 和 87% **不是同一道题的成绩**，整条改进曲线作废 ——
+  而你不会知道，因为没有任何东西在盯着评测集的字节。
+
+  这和评测数据本身的价值无关：**一个变了却不知道基准，等于没有基准。**
+report: |
+  检测到评测数据，但没有对它的指纹/快照。
+  → 评测集被改动时没有任何提示，「改进前 vs 改进后」的对比可能不可比。
+fix: |
+  给评测数据算一份指纹并提交进版本库（字节级，注意换行符统一成 LF），
+  在 CI 里校验：改了评测集就必须显式重拍快照，而不是悄悄变。
+refs:
+  - RULES.md §2
+stage: S1

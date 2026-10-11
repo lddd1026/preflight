@@ -10,9 +10,9 @@ detect:
   kind: exists
   params:
     # 在测试目录里找有没有覆盖"积压后恢复"的用例。
-    # 真正的检测器在 S6 实现；S0 只要求这条规则能被正确加载与校验。
+    # must_contain 是**任一命中即算通过** —— 命中一个就说明有人想过这件事。
     path: tests
-    keywords:
+    must_contain:
       - backlog
       - 积压
       - replay
@@ -21,6 +21,7 @@ detect:
       - 重新投递
       - dead-letter
       - 死信
+    # 真正的实现细节（按 AST 找断言）在 S6；S1 先做"有没有这个测试"。
 incident: |
   消息队列最典型的丢数据场景不是"队列挂了"，而是**积压之后的恢复**：
 

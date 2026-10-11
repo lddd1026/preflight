@@ -1,0 +1,36 @@
+id: general/exception-swallowed
+name: 异常被静默吞掉
+severity: medium
+applies_to: both
+audience: both
+detect:
+  kind: ast
+  checker: swallowed-exception
+  params:
+    # 哪些调用算"记了日志"
+    log_names:
+      - logger.exception
+      - logger.error
+      - logger.warning
+      - logging.exception
+      - logging.error
+      - print
+incident: |
+  静默失败最坏的地方不是"丢了异常"，而是**它让排查方向完全跑偏**：
+  日志里一切正常、监控没有告警、功能就是不生效。
+
+  但 agent 项目里有一个**合法**的例外，必须区分开：
+
+  把工具抛出的异常转成一句给模型的反馈（"工具执行失败：缺 start 参数"），
+  然后继续循环 —— 这是**正确做法**，不是吞异常。**错误是一种输入，不是终点。**
+
+  所以这条 checker 只报「吞了、既没记也没转成输出」的那种。
+report: |
+  第 {line} 行的 except 块既没有记录异常，也没有把它转成任何输出。
+  → 这里出错时，日志、监控、调用方**都看不到**。
+fix: |
+  至少 `logger.exception(...)`；如果本意是把错误转成给上层的反馈，
+  就把异常信息放进返回值里 —— 让某个人能看见它。
+refs:
+  - RULES.md §2
+stage: S1

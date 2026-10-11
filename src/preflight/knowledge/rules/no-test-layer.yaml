@@ -1,0 +1,53 @@
+id: general/no-test-layer
+name: 缺少某一层测试
+severity: high
+applies_to: both
+audience: both
+detect:
+  kind: exists
+  checker: test-layers
+  params:
+    test_globs:
+      - tests
+      - test
+      - specs
+    required_layers:
+      - unit
+      - integration
+    # 三个层次分开列，别把 acceptance / smoke 混进 integration。
+    # 关键词太宽的后果是**漏报真实缺口** —— 那比误报更糟，
+    # 因为它让人以为覆盖到了。
+    layer_keywords:
+      integration:
+        - integration
+        - 集成
+      e2e:
+        - e2e
+        - end_to_end
+        - endtoend
+        - acceptance
+        - smoke
+        - 端到端
+      unit: []
+incident: |
+  **每一层测试只能发现某一类 bug，而且各有盲区：**
+
+    单元       → 逻辑错、边界、编解码　｜发现不了：并发、I/O、集成
+    集成       → 组件间协议、事务　　｜发现不了：容量、跨节点故障
+    端到端     → 用户路径断掉　　　　｜发现不了：性能、并发
+    性能/混沌  → 容量、宕机行为　　　｜发现不了：正常路径的功能错
+
+  所以"缺哪一层"不是风格问题，是**一整类 bug 没人管**。
+
+  最常见的形态是：单元测试写得很齐、覆盖率很好看，
+  但集成层是空的 —— 于是所有"两个组件之间对不上"的问题都会漏到线上。
+report: |
+  检测到测试目录，但缺少 {layer} 层的测试（按文件名关键词判断）。
+  → 这一层负责发现的 bug 类型目前**完全没人管**。
+  ⚠️ 这是启发式判断，可能不准 —— 如果你的集成测试命名不典型，请忽略这条。
+fix: |
+  补上缺失的那一层。集成测试的关键原则：**数据库和消息队列绝不能用 mock**
+  —— 它们正是你要验证的"数据不丢"这个性质的载体。
+refs:
+  - RULES.md §2
+stage: S1

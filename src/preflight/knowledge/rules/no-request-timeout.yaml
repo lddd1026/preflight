@@ -8,11 +8,13 @@ matrix:
   invariant: no-overrun
 detect:
   kind: ast
+  # 具名 checker：同一个 ast kind 底下，"找吞异常"和"找缺 kwargs 的调用"
+  # 是两套完全不同的查询，写不出通用的那个。
+  checker: missing-call-kwarg
   params:
-    target: llm_call_site
     require_kwarg: timeout
-    # 去哪找调用点。真实符号表在 S3 实现。
-    known_symbols:
+    # 去哪找调用点。封装层的误报由 S3 的 wrapper_entry 配置消除。
+    symbols:
       - litellm.completion
       - litellm.acompletion
       - openai.chat.completions.create

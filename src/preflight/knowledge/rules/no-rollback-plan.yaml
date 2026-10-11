@@ -1,0 +1,39 @@
+id: general/no-rollback-plan
+name: 没有回滚方案
+severity: high
+applies_to: both
+audience: both
+detect:
+  kind: exists
+  params:
+    any_of_paths:
+      - ROLLBACK.md
+      - RUNBOOK.md
+      - docs/ROLLBACK.md
+      - docs/RUNBOOK.md
+      - docs/OPERATIONS.md
+    must_contain:
+      - 回滚
+      - rollback
+      - revert
+      - 降级
+      - 关开关
+      - feature flag
+incident: |
+  **没演练过的回滚方案等于不存在。**
+
+  上线评审里问"能不能回滚"，回答"能"的人通常指的是"git revert 一下"——
+  但数据库迁移改了 schema、消息格式变了、缓存里全是旧格式，
+  这些都不是 revert 代码能解决的。
+
+  所以一条合格的方案要写清三件事：
+  ① 回滚**动作**是什么　② 它在**多长时间**内生效　③ 什么时候**不能**回滚
+report: |
+  没有找到回滚方案（或找到了文档但里面没写回滚）。
+  → 出事时，值班的人会现场发明回滚流程，而那是压力最大、最容易出错的时刻。
+fix: |
+  写一份 RUNBOOK，至少包含：回滚动作、生效时间、不可回滚的边界条件。
+  **然后演练一次**（演练记录也留下来）。
+refs:
+  - RULES.md §2
+stage: S1

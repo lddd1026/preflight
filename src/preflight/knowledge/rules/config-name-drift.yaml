@@ -1,0 +1,42 @@
+id: general/config-name-drift
+name: 配置项名字在代码和文档之间对不上
+severity: high
+applies_to: both
+audience: both
+detect:
+  kind: text
+  checker: config-name-drift
+  params:
+    # 必须给前缀：否则"代码里的字符串"和"文档里的字符串"两个集合
+    # 一比就是满屏误报，这个检查会立刻被人关掉。
+    prefixes:
+      - FIVEWHYS_
+    ignore_names:
+      # 只出现在文档里的示例/占位，不算漂移
+      - FIVEWHYS_EXAMPLE_
+incident: |
+  **这条规则来自一次真实的踩坑。**
+
+  `.env.example` 里写的是 `FIVEWHYS_MODEL=deepseek/deepseek-chat`，
+  而代码里的字段叫 `llm_model`，pydantic 生成的环境变量是
+  **`FIVEWHYS_LLM_MODEL`** —— 少了 `LLM` 三个字母。
+
+  多一个少一个词都不会报错：`SettingsConfigDict` 的 `extra="ignore"`
+  把它静默丢掉。于是用户照着文档改模型 → **配置被忽略，还在用旧的**，
+  而所有对外展示的指标都标着一个没生效的模型名。
+
+  更讽刺的是那个模板文件自己就写着「写成 FIVWHYS_ 不会报错，只会静默失效」——
+  **一个关于静默失效的警告，本身静默失效了。**
+
+  这类问题**纯代码检查发现不了**（代码没错），
+  **纯文档检查也发现不了**（文档自洽）—— 只有把两者放一起比才会露出来。
+report: |
+  文档/模板里写了 {name}，但代码里读不到这个名字。
+  → 用户照着文档改配置会**静默失效**：不报错，只是没生效。
+fix: |
+  把两边的名字统一（通常是改文档）。
+  并且把这个比对放进 CI —— 否则下次还是会漂移。
+refs:
+  - RULES.md §2
+  - REQUIREMENTS 变更记录 §12.6（这是同一个坑的记录）
+stage: S1

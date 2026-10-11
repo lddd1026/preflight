@@ -7,11 +7,20 @@ detect:
   kind: exists
   params:
     path: .gitignore
-    must_contain:
-      - .env
+    # ⚠️ 这里必须**按行**匹配，不能用子串。
+    #
+    # 因为 `.gitignore` 里常见的一行是 `!.env.example` —— 它也包含
+    # `.env` 这三个字符。用子串匹配的话，"只忽略了模板文件"会被判成合格，
+    # 而那正是这条规则要抓的情况。（第一版就是这么写的，会误报。）
+    must_match_lines:
+      - '^\.env$' # 单独一行 .env —— 最常见
+      - '^\.env\*$' # .env* —— 覆盖 .env 本身
+      - '^\*\.env$' # *.env
+      - '^/\.env$' # 根目录锚定
+      - '^\*\*/\.env$' # **/.env
     must_not_match:
-      # 只忽略 .env.example 是不够的 —— 它挡不住真正的密钥文件
-      - '^!\.env'
+      # 显式把 .env 从忽略里排除回来 —— 比没写还糟
+      - '^!\.env$'
 incident: |
   这条没有任何争议，但仍然是最常见的事故来源之一。
 

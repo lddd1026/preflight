@@ -198,17 +198,36 @@ class MatrixRef(BaseModel):
 
 
 class DetectSpec(BaseModel):
-    """检测方式。
+    """检测方式：**用什么分析**（kind）+ **哪个实现**（checker）+ 参数。
 
-    ``params`` 故意是开放字典：加一种检测参数不需要改模型。但 ``kind`` 必须是
-    已知的，而且每种 kind 的必需参数由加载器再校验一层（见
-    :data:`preflight.core.registry.DETECT_REQUIRED_PARAMS`）。
+    ``kind`` 是分析方式（ast / text / exists / adapter / doc / manual），
+    ``checker`` 是具体实现的名字。为空时用该 kind 的通用实现 —— 只有
+    ``exists`` 和 ``text`` 有通用实现，它们能靠参数表达一类规则。
+
+    其余 kind（典型是 ``ast``）**必须**指定 checker：同一个 ``ast`` 底下，
+    「找吞异常」和「找无上限循环」是两套完全不同的查询，写不出通用的那个。
+
+    ``params`` 故意是开放字典：加参数不需要改模型。但**参数名和必需性**
+    由 :mod:`preflight.core.specs` 的声明表校验，不是想写什么就写什么 ——
+    否则「kind: text 但忘了写 pattern」会被静默收下，那条规则永远不触发，
+    而且不会有任何提示。
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     kind: DetectKind
+    checker: str | None = Field(
+        default=None,
+        description="具名检查器的名字；为空时用该 kind 的通用实现",
+    )
     params: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def effective_checker(self) -> str | None:
+        """实际会用哪个检查器。``None`` 表示解析不出来（加载器负责报错）。"""
+        from preflight.core.specs import resolve_checker_name
+
+        return resolve_checker_name(self.kind, self.checker)
 
 
 class Rule(BaseModel):
@@ -317,6 +336,27 @@ class Finding(BaseModel):
         return f"{self.path}:{self.line}"
 
 
+class SkippedRule(BaseModel):
+    """一条**没有跑**的规则。
+
+    为什么这个类型必须存在：一个"因为检查器还没实现而跳过"的规则，
+    和一个"跑了、没发现问题"的规则，在报告里长得一模一样 —— 而它们是
+    完全相反的两件事。
+
+    S1 就把这条做进去了，因为语料里本来就有排在后阶段的规则
+    （``agent/no-request-timeout`` 的检查器是 S3 的活）。如果跳过不留痕，
+    用户会以为"这个 agent 项目没有超时问题"，而事实是**我们没查**。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    rule_id: str
+    reason: str
+
+    def __str__(self) -> str:
+        return f"{self.rule_id}：{self.reason}"
+
+
 class Review(BaseModel):
     """一次评审的完整结果。
 
@@ -333,10 +373,23 @@ class Review(BaseModel):
     started_at: datetime
     finished_at: datetime | None = None
     findings: list[Finding] = Field(default_factory=list)
+    skipped: list[SkippedRule] = Field(
+        default_factory=list,
+        description="没跑成的规则。**不能让它们看起来像通过了**",
+    )
+    ignored: int = Field(
+        default=0,
+        description=(
+            "被忽略机制吃掉的发现条数。**必须显式记下来** —— "
+            "悄悄吃掉发现和根本不报在用户眼里一样，但前者更糟："
+            "它让报告看起来干净，而那份干净是假的"
+        ),
+    )
     knowledge_digest: str | None = Field(
         default=None,
         description="知识语料的指纹。规则改了但报告没重跑，靠它看得出来",
     )
+    duration_ms: int = 0
 
     def count(self, severity: Severity) -> int:
         return sum(1 for finding in self.findings if finding.severity is severity)
@@ -351,8 +404,28 @@ class Review(BaseModel):
 
     @property
     def verdict(self) -> str:
-        """``GO`` 或 ``NO-GO``。"""
-        return "NO-GO" if self.blocking else "GO"
+        """``GO`` / ``NO-GO`` / ``INCOMPLETE``。
+
+        ``INCOMPLETE`` 是第三态，专门给"没有阻塞项、但有规则没跑成"这种情况。
+
+        为什么需要它：如果只有 GO / NO-GO，那"我们没查这一条"会被渲染成 GO ——
+        用户拿到的结论是"可以上线"，而依据里少了一整条检查。
+        这不是失败，所以不该拦住构建；但它**绝不是通过**。
+        """
+        if self.blocking:
+            return "NO-GO"
+        if self.skipped:
+            return "INCOMPLETE"
+        return "GO"
+
+    @property
+    def exit_code(self) -> int:
+        """进程退出码。只有 NO-GO 才算失败。
+
+        ``INCOMPLETE`` 返回 0：规则没实现完是**工具**的状态，不是被检查项目的
+        问题，拿它拦住别人的 CI 是耍流氓。但它会被显著地打印出来。
+        """
+        return 1 if self.verdict == "NO-GO" else 0
 
     def summary_line(self) -> str:
         """一句话摘要，如 ``4 个问题：1 个高危、2 个中危、1 个提示``。"""
@@ -410,4 +483,5 @@ __all__ = [
     "Review",
     "Rule",
     "Severity",
+    "SkippedRule",
 ]

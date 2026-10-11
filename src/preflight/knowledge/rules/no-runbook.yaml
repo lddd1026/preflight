@@ -1,0 +1,31 @@
+id: general/no-runbook
+name: 没有运维文档
+severity: medium
+applies_to: both
+audience: both
+detect:
+  kind: exists
+  params:
+    any_of_paths:
+      - RUNBOOK.md
+      - OPERATIONS.md
+      - ONCALL.md
+      - docs/RUNBOOK.md
+      - docs/OPERATIONS.md
+      - docs/ONCALL.md
+incident: |
+  运维文档的价值不在"平时看"，而在**出事那天**：凌晨三点被叫起来的人
+  需要知道"怎么重启、怎么回滚、日志在哪、出什么事找谁"。
+
+  如果没有，每一次事故都变成一次考古。
+
+  对 B 端产品这条更重：客户会问"你们的应急预案是什么"，
+  而回答"我们的工程师很有经验"是不能签进合同的。
+report: |
+  没有找到运维文档（RUNBOOK / OPERATIONS / ONCALL）。
+  → 出事时，处理步骤只存在于某个人的脑子里。
+fix: |
+  写一份 RUNBOOK：怎么部署、怎么回滚、常见故障怎么处理、出事找谁。
+refs:
+  - RULES.md §2
+stage: S1

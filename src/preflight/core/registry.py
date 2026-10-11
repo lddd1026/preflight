@@ -41,13 +41,13 @@ from pydantic import BaseModel, ValidationError
 from preflight.core.models import (
     AppliesTo,
     Audience,
-    DetectKind,
     Invariant,
     Mechanism,
     Profile,
     Rule,
     Severity,
 )
+from preflight.core.specs import CHECKERS, ParamSpec
 
 # 包内自带的语料。core/registry.py → parents[1] = preflight/
 DEFAULT_KNOWLEDGE_ROOT = Path(__file__).resolve().parents[1] / "knowledge"
@@ -58,21 +58,6 @@ _SUBDIRS: Mapping[str, type[BaseModel]] = {
     "mechanisms": Mechanism,
     "rules": Rule,
     "profiles": Profile,
-}
-
-# 每种检测方式的必需参数。
-#
-# ⚠️ 这份表在 S0 是**暂定**的：真正的检测器在 S1/S2 才实现，届时可能发现
-# 某个 kind 还需要别的参数。但即使暂定也要有 —— 它的价值是让
-# 「kind: text 但没写 pattern」这种规则**立刻报错**，而不是被静默收下、
-# 然后在运行时什么都不做（那种"规则存在但永远不触发"的 bug 最难查）。
-DETECT_REQUIRED_PARAMS: Mapping[DetectKind, tuple[str, ...]] = {
-    DetectKind.AST: ("target",),
-    DetectKind.TEXT: ("pattern",),
-    DetectKind.EXISTS: ("path",),
-    DetectKind.ADAPTER: ("tool",),
-    DetectKind.DOC: ("claim_type",),
-    DetectKind.MANUAL: ("question",),
 }
 
 
@@ -356,7 +341,7 @@ def _load_dir(
 
         # 语义约束：每种 detect.kind 的必需参数
         if isinstance(obj, Rule):
-            errors.extend(_validate_detect_params(path, obj))
+            errors.extend(_validate_detect_spec(path, obj))
 
     return loaded, errors
 
@@ -401,23 +386,109 @@ def _input_hint(detail: Any) -> str:
     return f"（输入：{raw}）"
 
 
-def _validate_detect_params(path: Path, rule: Rule) -> list[KnowledgeError]:
-    """检查 ``detect.kind`` 的必需参数。"""
-    required = DETECT_REQUIRED_PARAMS.get(rule.detect.kind, ())
-    missing = [name for name in required if name not in rule.detect.params]
-    if not missing:
-        return []
-    return [
-        KnowledgeError(
-            path=path,
-            field_path="detect.params",
-            message=(
-                f"kind 是 {rule.detect.kind.value!r}，但缺少必需参数：{', '.join(missing)}。"
-                f"（该 kind 需要：{', '.join(required)}）"
-                " 少了它这条规则永远不会触发，而且不会有任何提示"
-            ),
+def _validate_detect_spec(path: Path, rule: Rule) -> list[KnowledgeError]:
+    """校验 ``detect``：检查器是否存在、kind 是否对得上、参数是否合法。
+
+    这一层挡住的错都是「静默失效」型的 —— 规则加载成功、语法没错，
+    但永远不触发，或者触发时用的是错的参数。
+    """
+    spec = rule.detect
+    name = spec.effective_checker
+
+    if name is None:
+        return [
+            KnowledgeError(
+                path=path,
+                field_path="detect.checker",
+                message=(
+                    f"kind 是 {spec.kind.value!r}，这个 kind 没有通用实现，"
+                    "必须显式指定 checker（写清用哪种检测能力）。"
+                    f"可用的有：{_available_checkers(spec.kind.value)}"
+                ),
+            )
+        ]
+
+    checker = CHECKERS.get(name)
+    if checker is None:
+        return [
+            KnowledgeError(
+                path=path,
+                field_path="detect.checker",
+                message=(f"没有叫 {name!r} 的检查器。全部可用：{', '.join(sorted(CHECKERS))}"),
+            )
+        ]
+
+    if checker.kind is not spec.kind:
+        return [
+            KnowledgeError(
+                path=path,
+                field_path="detect.kind",
+                message=(
+                    f"checker {name!r} 属于 kind {checker.kind.value!r}，"
+                    f"但这里写的是 {spec.kind.value!r}。"
+                    "两者对不上 —— 检查器会按自己的方式分析，而报告里写的是另一种，"
+                    "排查时会一直找错方向"
+                ),
+            )
+        ]
+
+    return _validate_params(path, name, checker.params, spec.params)
+
+
+def _validate_params(
+    path: Path,
+    checker_name: str,
+    param_spec: ParamSpec,
+    params: Mapping[str, Any],
+) -> list[KnowledgeError]:
+    errors: list[KnowledgeError] = []
+
+    unknown = sorted(set(params) - param_spec.all_known)
+    for key in unknown:
+        errors.append(
+            KnowledgeError(
+                path=path,
+                field_path=f"detect.params.{key}",
+                message=(
+                    f"检查器 {checker_name!r} 不认识这个参数。"
+                    f"它接受的是：{param_spec.describe()}。"
+                    "写错的参数会被静默忽略，于是这条规则的表现和你以为的不一样"
+                ),
+            )
         )
-    ]
+
+    for key in param_spec.required:
+        if key not in params:
+            errors.append(
+                KnowledgeError(
+                    path=path,
+                    field_path=f"detect.params.{key}",
+                    message=(
+                        f"缺必需参数 {key!r}（检查器 {checker_name!r}）。"
+                        f"它接受的是：{param_spec.describe()}"
+                    ),
+                )
+            )
+
+    if param_spec.any_of and not any(key in params for key in param_spec.any_of):
+        errors.append(
+            KnowledgeError(
+                path=path,
+                field_path="detect.params",
+                message=(
+                    f"检查器 {checker_name!r} 要求这几个里**至少给一个**："
+                    f"{', '.join(param_spec.any_of)}。一个都没给，这条规则永远不会触发，"
+                    "而且不会有任何提示"
+                ),
+            )
+        )
+
+    return errors
+
+
+def _available_checkers(kind: str) -> str:
+    names = sorted(spec.name for spec in CHECKERS.values() if spec.kind.value == kind)
+    return ", ".join(names) if names else "（这个 kind 下还没有任何检查器）"
 
 
 def _validate_cross_references(knowledge: Knowledge) -> list[KnowledgeError]:
@@ -492,7 +563,6 @@ def _audience_matches(rule_value: Audience, profile_value: Audience) -> bool:
 
 __all__ = [
     "DEFAULT_KNOWLEDGE_ROOT",
-    "DETECT_REQUIRED_PARAMS",
     "Knowledge",
     "KnowledgeError",
     "KnowledgeLoadError",
