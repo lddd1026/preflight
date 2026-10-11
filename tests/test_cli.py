@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 
 from preflight import __version__
 from preflight.cli import app
-from preflight.core.registry import load_knowledge
+from preflight.core.registry import DEFAULT_KNOWLEDGE_ROOT, load_knowledge
 from sample_knowledge import base_files, write_knowledge
 
 runner = CliRunner()
@@ -156,6 +156,20 @@ def test_explain_includes_the_incident_not_just_the_rule() -> None:
     """血案是这个项目的重点 —— 只给「不合规」的 linter 到处都是。"""
     result = runner.invoke(app, ["explain", "general/hardcoded-secret"])
     assert "轮换" in result.stdout, "应该讲清「删掉不够、必须轮换」这件事"
+
+
+def test_explain_shows_a_relative_source_path() -> None:
+    """来源那一行要相对化。
+
+    绝对路径在这台机器上很长，塞进面板会折成三行，其中九成是前缀 ——
+    看起来像版面坏了。相对路径一样能定位，而且不撑坏版面。
+    """
+    result = runner.invoke(app, ["explain", "general/hardcoded-secret"])
+    assert result.exit_code == 0, result.stdout
+    assert "knowledge" in result.stdout, "应该给出规则所在的语料文件"
+    assert str(DEFAULT_KNOWLEDGE_ROOT) not in result.stdout, (
+        "不该把绝对路径原样铺开 —— 面板会被折行撑坏"
+    )
 
 
 def test_explain_unknown_rule_exits_1_with_suggestion() -> None:

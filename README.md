@@ -62,7 +62,31 @@
 
 ## 当前状态
 
-🚧 **设计阶段** —— 文档已就绪，代码待开发。
+🚧 **开发中 —— S0（地基与知识格式）已完成**，下一步 S1（确定性检测引擎）。
+
+**现在能跑什么：**
+
+```powershell
+pwsh -File scripts/setup.ps1          # 建 .venv 装依赖
+preflight knowledge-check             # 校验语料（贡献规则的入口）
+preflight list-rules                  # 看有哪些规则
+preflight list-rules -p cli-oss       # 按场景档案过滤 ← 同一个仓库、不同档案跑不同规则集
+preflight list-rules --matrix         # 看矩阵里哪些格子还没人覆盖
+preflight explain agent/no-request-timeout   # 讲清一条规则，含它对应的血案
+pwsh -File scripts/check.ps1          # ruff + format + pytest + mypy
+```
+
+**还不能跑什么：** `preflight run <项目路径>`（真正的检查）—— 那要等 S1。
+
+| 阶段 | 内容 | 状态 |
+| --- | --- | --- |
+| S0 | 地基与知识格式 | ✅ |
+| S1 | 确定性检测引擎（11 条通用规则） | ⬜ |
+| S2 | 外部工具编排（pip-audit / gitleaks / ruff） | ⬜ |
+| S3 | 12 条 agent 专项规则 | ⬜ 🏁 v0.1 |
+| S4–S8 | 文档理解层 / 机制推导 / 人工签核 / 发布 | ⬜ |
+
+进度细节见 [docs/PROGRESS.md](docs/PROGRESS.md)。
 
 | 文档 | 内容 |
 | --- | --- |

@@ -81,7 +81,7 @@ def _load() -> Knowledge:
         console.print(f"[red]语料加载失败：{len(exc.errors)} 处问题[/red]")
         console.print()
         for error in exc.errors:
-            console.print(f"  [red]✗[/red] [bold]{error.path}[/bold]")
+            console.print(f"  [red]✗[/red] [bold]{_display_path(error.path)}[/bold]")
             console.print(f"      [cyan]{error.field_path or '<root>'}[/cyan]")
             console.print(f"      {error.message}")
         console.print()
@@ -253,7 +253,7 @@ def explain(
     if rule.stage:
         body.append(f"阶段     {rule.stage}")
     if source:
-        body.append(f"来源     {source}")
+        body.append(f"来源     {_display_path(source)}")
 
     body += [
         "",
@@ -283,6 +283,20 @@ def explain(
 
 def _indent(text: str, prefix: str = "  ") -> str:
     return "\n".join(prefix + line if line.strip() else "" for line in text.splitlines())
+
+
+def _display_path(path: Path) -> str:
+    """能相对就相对。
+
+    绝对路径在这台机器上很长（``D:\\deepseekharness\\preflight\\src\\preflight\\
+    knowledge\\rules\\no-request-timeout.yaml``），塞进面板会折成三行，
+    而其中九成是前缀。相对路径一样能定位，而且不会把版面撑坏。
+    """
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        # 不在当前目录下（装成包时在 site-packages 里）—— 那就照原样给
+        return str(path)
 
 
 @app.command("knowledge-check")
