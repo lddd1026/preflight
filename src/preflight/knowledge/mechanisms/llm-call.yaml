@@ -1,0 +1,50 @@
+id: llm-call
+name: LLM 调用
+why_it_breaks: |
+  成本不可见、上下文膨胀、幻觉、工具越权。
+
+  **把它当成一个「机制」而不是一个特殊分类，是本项目最关键的设计决定。**
+  这样 agent 的全部专项检查就自动落进了同一个矩阵：
+
+    机制        不变量              检查项
+    ──────      ──────              ──────
+    长连接      不能丢              重连补发测试
+    LLM 调用    不能丢              轨迹落盘
+    LLM 调用    不超支              成本 / token 上限
+    LLM 调用    不越权              工具权限边界
+
+  于是 preflight 不需要做成"两个产品"：一个查传统软件、一个查 agent。
+probes:
+  - kind: dependency
+    any_of:
+      - litellm
+      - openai
+      - anthropic
+      - langchain
+      - langchain-core
+      - langgraph
+      - llama-index
+      - google-generativeai
+      - google-genai
+      - ollama
+      - transformers
+      - vllm
+    why: LLM SDK / 框架出现在依赖里
+  - kind: env_template
+    any_of:
+      - OPENAI_API_KEY
+      - ANTHROPIC_API_KEY
+      - DEEPSEEK_API_KEY
+      - GEMINI_API_KEY
+      - DASHSCOPE_API_KEY
+      - MOONSHOT_API_KEY
+    why: API Key 的环境变量名。**比依赖更确定** —— 有人装库只是试一试
+  - kind: ast_symbol
+    any_of:
+      - completion
+      - acompletion
+      - chat.completions.create
+      - messages.create
+      - generate_content
+      - ChatOpenAI
+    why: 调用点符号。用于识别那些自己包了一层 client 的项目

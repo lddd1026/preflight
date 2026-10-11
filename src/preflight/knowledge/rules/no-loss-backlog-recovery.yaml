@@ -1,0 +1,41 @@
+id: message-queue/no-loss-backlog-recovery
+name: 消息队列没有积压恢复的验证
+severity: high
+applies_to: software
+audience: both
+matrix:
+  mechanism: message-queue
+  invariant: no-loss
+detect:
+  kind: exists
+  params:
+    # 在测试目录里找有没有覆盖"积压后恢复"的用例。
+    # 真正的检测器在 S6 实现；S0 只要求这条规则能被正确加载与校验。
+    path: tests
+    keywords:
+      - backlog
+      - 积压
+      - replay
+      - 重放
+      - redeliver
+      - 重新投递
+      - dead-letter
+      - 死信
+incident: |
+  消息队列最典型的丢数据场景不是"队列挂了"，而是**积压之后的恢复**：
+
+  消费者停了四小时，队列里堆了几十万条。恢复时批量消费，
+  中途再挂一次 —— 那批已 ack 但还没写库的消息就永久消失了。
+  而因为"至少一次"投递，重放又可能造成重复。
+
+  **这条路径几乎不会在开发环境被走到**（开发环境没有积压），
+  所以必须有专门的用例去覆盖它。
+report: |
+  检测到使用消息队列，但没有找到覆盖"积压后恢复"的测试。
+  → 积压恢复是消息队列丢数据的头号场景，而它在开发环境永远不会被触发。
+fix: |
+  加一个测试：日志驱动停止消费 → 堆积 N 条 → 恢复消费 → 断言
+  ① 一条不丢　② 已 ack 的没有重复落库。
+refs:
+  - KNOWLEDGE.md §4
+stage: S6

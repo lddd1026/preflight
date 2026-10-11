@@ -1,0 +1,31 @@
+id: general/env-not-ignored
+name: .env 没有被 gitignore
+severity: blocker
+applies_to: both
+audience: both
+detect:
+  kind: exists
+  params:
+    path: .gitignore
+    must_contain:
+      - .env
+    must_not_match:
+      # 只忽略 .env.example 是不够的 —— 它挡不住真正的密钥文件
+      - '^!\.env'
+incident: |
+  这条没有任何争议，但仍然是最常见的事故来源之一。
+
+  两个容易漏的细节：
+  ① 只写了 `.env.example` 的忽略，没写 `.env` —— 看起来"处理过了"
+  ② `.env` 曾经被提交过：后来加进 .gitignore **不会**把它从历史里移除。
+     这时候正确的动作是 `git rm --cached .env` **加上轮换密钥** ——
+     光删文件不管用，历史里还在。
+report: |
+  仓库里没有 .gitignore，或者 .gitignore 里没有 .env 规则。
+  → 一次 `git add .` 就可能把密钥提交上去。
+fix: |
+  在 .gitignore 里加 `.env`（保留 `!.env.example`）。
+  如果 .env 曾经被跟踪过：`git rm --cached .env`，然后**轮换密钥**。
+refs:
+  - RULES.md §2
+stage: S1

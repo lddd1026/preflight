@@ -1,0 +1,29 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+
+# ---- 工具缓存（这些会落在项目目录里）----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- preflight 自己的运行时产物 ----
+# 检查结果落盘的位置。它是运行时数据，不是源码。
+.preflight/
+
+# ---- 环境与密钥 ----
+.env
+*.env
+!.env.example
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

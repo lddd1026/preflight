@@ -1,0 +1,88 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "preflight-check"
+version = "0.0.1"
+description = "上线前的自动评审：把自动检查、文档漂移和人工签核收拢成一次运行"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["release", "readiness", "preflight", "agent", "lint", "review"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+# 依赖克制：能不加就不加。
+# 语料（YAML）用 pyyaml；数据模型用 pydantic；CLI 用 typer + rich。
+dependencies = [
+    "pydantic>=2.7,<3",
+    "pyyaml>=6.0,<7",
+    "typer>=0.12,<1",
+    "rich>=13.0,<16",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9",
+    "ruff>=0.6,<1",
+    "mypy>=1.11,<2",
+    # mypy 需要它才能检查 pyyaml 的用法。
+    # 不加的话 mypy 报 "Library stubs not installed for yaml"，而正确的处理是
+    # **装存根**，不是用 ignore 把它压掉 —— 压掉就等于放弃了类型检查。
+    "types-PyYAML>=6.0,<7",
+]
+
+[project.scripts]
+preflight = "preflight.cli:main"
+
+[project.urls]
+Repository = "https://github.com/lddd1026/preflight"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/preflight"]
+
+# 知识语料是 YAML，必须进 wheel —— 否则装完之后一条规则都加载不到。
+# 这类"装好了但少了数据文件"的问题在开发机上永远看不出来（本地是源码目录），
+# 只有 pip install 完才会暴露。显式声明，别指望默认行为。
+[tool.hatch.build.targets.wheel.force-include]
+"src/preflight/knowledge" = "preflight/knowledge"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+# 排除 markdown：docs/ 里的代码示例是给人看的，注释对齐是刻意的，
+# 不希望被 ruff format 重排。
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+# RUF001/002/003 把中文全角标点判成"有歧义的 Unicode 字符"。
+#
+# 这三条对一个中文项目只有噪音：本项目的注释、文档字符串、报错信息**故意**
+# 用全角 ——「：」「（）」「、」在中文里就是正确写法，改成半角反而难读。
+#
+# 实测：不忽略它们，`ruff check` 一次报 **397 个错误**，全部是标点。
+# 而 397 条噪音的结果是——没人再看 ruff 的输出，真问题也就被埋了。
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

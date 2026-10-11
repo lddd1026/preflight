@@ -1,0 +1,14 @@
+id: software-with-llm
+name: 传统软件 + 一个 LLM 功能
+description: |
+  这是一个真实且越来越常见的形态：主体是个普通服务（Web / 批处理 / 桌面），
+  里面**加了一个 LLM 功能**（AI 摘要、智能分类、对话助手）。
+
+  它既不是纯 software，也不是 agent，所以需要 include 把 agent 侧的规则
+  拉进来 —— 这就是档案的 ``include`` 存在的理由。
+applies_to: software
+audience: both
+fail_on: high
+include:
+  # 这个项目会调模型，所以模型调用侧的规则必须跑 —— 哪怕它们标的是 agent。
+  - agent/no-request-timeout

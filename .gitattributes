@@ -1,0 +1,21 @@
+# 换行符统一成 LF。
+#
+# 为什么必须有这个文件：CI 同时在 ubuntu 和 windows 上跑（见 .github/workflows/ci.yml）。
+# 如果仓库里存的是 CRLF、而检出时又按平台转换，两边看到的**字节**就不一样 ——
+# 任何基于文件内容的比较（指纹、快照、golden file）都会一边绿一边红。
+#
+# 这个坑在 fivewhys 上真实发生过：`open("w")` 在 Windows 默认把 \n 转成 CRLF，
+# 于是同一份数据在 Windows 和 Linux 上算出不同的 SHA-256，
+# 「可复现」退化成了「在我机器上可复现」。
+* text=auto eol=lf
+
+# 二进制文件不要碰
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# PowerShell 脚本在 Windows 上用 LF 也能正常执行（pwsh 5+/7 都行），
+# 不特殊处理 —— 统一比方便重要。

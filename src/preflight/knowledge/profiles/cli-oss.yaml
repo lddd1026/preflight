@@ -1,0 +1,9 @@
+id: cli-oss
+name: 开源命令行工具
+description: |
+  面向开发者的开源 CLI。用户自己承担风险、能自己看源码，
+  所以门禁宽松 —— 但**密钥和回滚仍然是阻断级**：
+  这两样出事，用户不会怪自己，只会怪这个工具。
+applies_to: software
+audience: customer
+fail_on: high

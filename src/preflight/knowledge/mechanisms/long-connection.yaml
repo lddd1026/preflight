@@ -1,0 +1,28 @@
+id: long-connection
+name: 长连接
+why_it_breaks: 断线、重连风暴、连接与服务端状态不同步
+probes:
+  - kind: dependency
+    any_of:
+      - websockets
+      - python-socketio
+      - socket.io
+      - channels
+      - aiohttp-sse
+    why: |
+      长连接库。
+      注意不要用 aiohttp / uvicorn 这种"也可能只是普通 HTTP"的宽泛线索 ——
+      那会让每个 Web 项目都被判定为有长连接，等于没有探测。
+  - kind: ast_symbol
+    any_of:
+      - WebSocket
+      - WebSocketHandler
+      - ConnectionManager
+      - on_connect
+      - on_disconnect
+    why: 连接管理器的类名通常很稳定
+  - kind: config_file
+    any_of:
+      - proxy_read_timeout
+      - upgrade
+    why: 反向代理的配置里出现超时/升级设置，说明前面挂着长连接

@@ -1,0 +1,38 @@
+id: agent/no-request-timeout
+name: 模型调用没有超时
+severity: high
+applies_to: agent
+audience: both
+matrix:
+  mechanism: llm-call
+  invariant: no-overrun
+detect:
+  kind: ast
+  params:
+    target: llm_call_site
+    require_kwarg: timeout
+    # 去哪找调用点。真实符号表在 S3 实现。
+    known_symbols:
+      - litellm.completion
+      - litellm.acompletion
+      - openai.chat.completions.create
+      - anthropic.messages.create
+      - google.genai.generate_content
+incident: |
+  litellm 的默认超时是 **600 秒/次**。乘以 ``max_steps=20``，
+  最坏情况是 **3 小时**。
+
+  provider 挂死（TCP 连上了但不回包）时，命令行会一直僵在那里，
+  用户只能 Ctrl+C —— 而且看不出是"在等"还是"死了"。
+
+  **这不是性能问题，是有界性问题**：一个没有超时的外部调用，
+  等于把程序的终止权交给了对方。
+report: |
+  第 {line} 行的模型调用没有设置 timeout。
+  → 默认 600 秒 × 你的最大步数，最坏情况下命令行会僵住几小时。
+fix: |
+  给调用加上 timeout=60，或统一在 client 构造时设一次。
+  命令行工具建议 60 秒以内。
+refs:
+  - 需求 NFR-3
+stage: S3

@@ -1,0 +1,30 @@
+id: message-queue
+name: 消息队列
+why_it_breaks: 积压、重复投递、分区乱序、消费者崩溃后重新消费
+probes:
+  - kind: dependency
+    any_of:
+      - aiokafka
+      - kafka-python
+      - confluent-kafka
+      - amqp
+      - pika
+      - nats-py
+      - pulsar-client
+      - kombu
+    why: 客户端库出现在依赖清单里，说明这个项目在生产或消费消息
+  - kind: env_template
+    any_of:
+      - KAFKA_BROKERS
+      - RABBITMQ_URL
+      - NATS_URL
+      - PULSAR_URL
+    why: 环境模板里的连接串，是最直接的证据（比依赖更确定）
+  - kind: ast_symbol
+    any_of:
+      - Producer
+      - Consumer
+      - subscribe
+      - publish
+    why: 代码里出现的生产/消费符号。这是三者里最弱的一条，容易误报，
+      所以只作为补充线索

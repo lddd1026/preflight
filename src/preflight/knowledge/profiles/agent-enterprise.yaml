@@ -1,0 +1,11 @@
+id: agent-enterprise
+name: B 端 agent 系统
+description: |
+  卖给企业客户的 agent —— **四个象限里门禁最严的一格**。
+
+  为什么最严：B 端客户不关心你的 agent 有多聪明，
+  只关心"谁让它做的决定、依据是什么、能不能复核、数据去哪了、它有没有越权"。
+  所以中危也要拦：审计、隔离、越权这三类问题在企业场景里不是"建议"。
+applies_to: agent
+audience: enterprise
+fail_on: medium
