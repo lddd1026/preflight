@@ -40,6 +40,22 @@ dev = [
     "types-PyYAML>=6.0,<7",
 ]
 
+# 外部工具适配器（S2）**是可选的**。
+#
+# 为什么不放进主依赖：它们不是 preflight 跑起来的前提 ——
+# 没装的时候对应的规则会明确报"跳过"，而不是崩。这正是适配器层的设计。
+#
+# 想让检查更全就装上：`pip install -e ".[dev,tools]"`
+#
+# ⚠️ gitleaks 是一个 Go 二进制，不在 PyPI 上 —— 要单独装：
+#     https://github.com/gitleaks/gitleaks#installing
+# 没装时 general/leaked-secret 会被跳过，而内置的 general/hardcoded-secret
+# 仍然有效（它是零依赖的兜底）。
+tools = [
+    "pip-audit>=2.7,<3",
+    "ruff>=0.6,<1",  # 静态缺陷那条也需要它；dev 里也有一份，装 tools 单独跑时要有
+]
+
 [project.scripts]
 preflight = "preflight.cli:main"
 
@@ -64,7 +80,16 @@ src = ["src", "tests"]
 extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# ⚠️ 这里的 select **包括 S（bandit 安全规则）**，是因为一件事：
+#
+# 适配器给别人的项目跑的是 ``F,E9,B,S``。如果我们自己只跑 ``E,F,I,UP,B,SIM,RUF``，
+# 就会出现一个很隐蔽的后果 —— **S 类的抑制注释被 RUF100 当成"没用"删掉**。
+# 实测：``adapters/base.py`` 里 subprocess 那行的 ``# noqa: S603`` 就是这么没的，
+# 然后 preflight 用 ruff 查自己时报出了 S603。
+#
+# 教训：**一个只看窄规则集的自动修复，会删掉只有宽规则集才需要的抑制。**
+# 修法不是把 noqa 加回去（它还会被删），而是让自己跑和工具要求别人跑的一样严。
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "S"]
 
 # RUF001/002/003 把中文全角标点判成"有歧义的 Unicode 字符"。
 #
@@ -73,7 +98,17 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 #
 # 实测：不忽略它们，`ruff check` 一次报 **397 个错误**，全部是标点。
 # 而 397 条噪音的结果是——没人再看 ruff 的输出，真问题也就被埋了。
-ignore = ["RUF001", "RUF002", "RUF003"]
+#
+# S101（用了 assert）同样忽略：它在测试文件里完全正常，而这个项目的
+# 测试文件比源码还长。（这也是适配器默认忽略它的原因 —— 详见
+# detect/adapters/ruff_tool.py 的 DEFAULT_IGNORE。）
+ignore = ["RUF001", "RUF002", "RUF003", "S101"]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试里**故意**写"坏"东西：假密钥、假密码、硬编码临时路径、
+# 以及为了验证"工具不修改被检查对象"而起的子进程。
+# 那些不是漏洞，是被测试的行为本身。
+"tests/*" = ["S105", "S106", "S107", "S108", "S603", "S607"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -86,3 +121,9 @@ no_implicit_optional = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    # 真实调用外部工具的用例。它们会 skip（工具没装时），
+    # 所以在 CI 里跑不跑无所谓；但本地装了工具的人应该知道
+    # `pytest -m slow` 能单独跑这一批。
+    "slow: 真实调用外部工具（gitleaks / pip-audit / ruff）的冒烟测试",
+]

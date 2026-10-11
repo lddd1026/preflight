@@ -49,10 +49,11 @@ preflight/
 │   │
 │   ├── detect/         ← 确定性检测器（零 LLM）
 │   │   ├── repo.py         仓库扫描（忽略规则、glob、读文本、解析 AST）
-│   │   ├── base.py         CheckContext + Checker 协议
+│   │   ├── base.py         CheckContext + Checker 协议 + CheckerSkipped
 │   │   ├── generic.py      通用检查器：exists / text（靠参数表达一类规则）
 │   │   ├── ast_checks.py   具名 AST 检查器 ×3
 │   │   ├── cross_checks.py 跨文件检查器 ×4
+│   │   ├── adapters/       外部工具编排（S2）：pip-audit / gitleaks / ruff
 │   │   ├── ignore.py       忽略机制（`preflight: ignore` / `ignore-file`）
 │   │   ├── registry.py     检查器实现表（与 core/specs.py 一一对应）
 │   │   └── engine.py       调度：跑规则 → 产 Review
@@ -115,7 +116,7 @@ runtime 被 core / understand 使用
 | --- | --- | --- | --- | --- |
 | **S0** | 地基与知识格式 | 3 天 | ✅ | |
 | **S1** | 确定性检测引擎 | 1 周 | ✅ | |
-| **S2** | 外部工具编排 | 4 天 | ⬜ | |
+| **S2** | 外部工具编排 | 4 天 | ✅ | |
 | **S3** | agent 专项规则 | 1 周 | ⬜ | 🏁 **v0.1 可发布** |
 | **S4** | 文档发现 + 声明抽取 | 1.5 周 | ⬜ | |
 | **S5** | 证据核对 + 防幻觉 + 报告 | 1.5 周 | ⬜ | 🏁 **v0.2 可发布** |
@@ -192,7 +193,14 @@ runtime 被 core / understand 使用
 
 ---
 
-### S2 · 外部工具编排（4 天）
+### S2 · 外部工具编排（4 天）  ✅ 已完成
+
+> 实际结果见 [PROGRESS.md](PROGRESS.md) 的 S2 章节 —— 包括真跑一遍才发现的
+> **7 个缺陷**，其中两个是 preflight 用真实 ruff 在自己身上查出来的。
+>
+> 主要偏差：新增 `CheckerSkipped`（检查器要能说"这条我跑不了"）、
+> `Review.tool_versions`（工具版本会影响结论）、`Repo.path_exists()`
+> （扫描器的忽略规则管"我们读什么"，不管"工具能看到什么"）。
 
 **🎯 目标**：把现成工具的输出归一化成 `Finding`。**只做编排，一行规则都不自己写。**
 

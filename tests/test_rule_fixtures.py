@@ -24,16 +24,18 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from fake_tool import write_fake_tool
 from preflight.core.models import Rule, Severity
 from preflight.core.registry import load_knowledge
 from preflight.detect.engine import run_path
 from preflight.detect.registry import implemented_names
-from rule_fixtures import FIXTURES
+from rule_fixtures import FIXTURES, FakeTool
 from sample_knowledge import write_knowledge
 
 KNOWLEDGE = load_knowledge()
@@ -50,7 +52,29 @@ RULES_NEEDING_FIXTURES = [
 RULES_NOT_IMPLEMENTED = [rule_id for rule_id in ALL_RULES if rule_id not in RULES_NEEDING_FIXTURES]
 
 
-def _run(rule: Rule, root: Path) -> Any:
+def _with_fake_tool(rule: Rule, tool: FakeTool, directory: Path) -> Rule:
+    """把规则换成「用假工具跑」。
+
+    适配器类规则没法靠仓库内容控制正反例 —— 决定发现的是**工具的回报**。
+    所以给它们注入一个行为确定的假工具（通过 ``tool_command`` 覆盖整个命令）。
+    """
+    script = write_fake_tool(
+        directory,
+        version=tool.version,
+        output=tool.output,
+        error=tool.error,
+        exit_code=tool.exit_code,
+    )
+    params = {**rule.detect.params, "tool_command": [sys.executable, str(script)]}
+    return rule.model_copy(update={"detect": rule.detect.model_copy(update={"params": params})})
+
+
+def _run(
+    rule: Rule, root: Path, *, tool: FakeTool | None = None, tools_dir: Path | None = None
+) -> Any:
+    if tool is not None:
+        assert tools_dir is not None, "给了假工具就得给一个放它的目录"
+        rule = _with_fake_tool(rule, tool, tools_dir)
     return run_path(root, rules=[rule], profile_id="fixture", fail_on=Severity.INFO)
 
 
@@ -97,7 +121,12 @@ def test_dirty_fixture_triggers_the_rule(rule_id: str, tmp_path: Path) -> None:
     fixture = FIXTURES[rule_id]
     root = write_knowledge(tmp_path / "dirty", fixture.dirty)
 
-    review = _run(KNOWLEDGE.rules[rule_id], root)
+    review = _run(
+        KNOWLEDGE.rules[rule_id],
+        root,
+        tool=fixture.dirty_tool,
+        tools_dir=tmp_path / "tools",
+    )
 
     assert not review.skipped, f"{rule_id} 的检查器没有跑起来：{review.skipped}"
     assert review.findings, (
@@ -116,13 +145,41 @@ def test_clean_fixture_is_silent(rule_id: str, tmp_path: Path) -> None:
     fixture = FIXTURES[rule_id]
     root = write_knowledge(tmp_path / "clean", fixture.clean)
 
-    review = _run(KNOWLEDGE.rules[rule_id], root)
+    review = _run(
+        KNOWLEDGE.rules[rule_id],
+        root,
+        tool=fixture.clean_tool,
+        tools_dir=tmp_path / "tools",
+    )
 
     assert not review.skipped, f"{rule_id} 的检查器没有跑起来：{review.skipped}"
     assert review.findings == [], (
         f"{rule_id} 在反例上误报了 {len(review.findings)} 条："
         f"{[f.message for f in review.findings]}"
         f"（正反例的差别是：{fixture.delta}）"
+    )
+
+
+def test_adapter_rules_declare_a_fake_tool_on_both_sides() -> None:
+    """适配器类规则的正反例**必须都带假工具**。
+
+    漏了的话会掉进一个很隐蔽的坑：反例没给假工具 → 真实工具没装 →
+    规则被跳过 → ``findings == []`` 成立 → **测试绿，但什么也没验证**。
+
+    所以这里直接断言两边都有。
+    """
+    from preflight.core.models import DetectKind
+
+    offenders: list[str] = []
+    for rule_id, fixture in FIXTURES.items():
+        rule = KNOWLEDGE.rules.get(rule_id)
+        if rule is None or rule.detect.kind is not DetectKind.ADAPTER:
+            continue
+        if fixture.dirty_tool is None or fixture.clean_tool is None:
+            offenders.append(rule_id)
+    assert not offenders, (
+        f"这些适配器规则的正反例缺假工具：{offenders} —— "
+        "没有它，测试会因为「工具没装→跳过→没发现」而假绿"
     )
 
 

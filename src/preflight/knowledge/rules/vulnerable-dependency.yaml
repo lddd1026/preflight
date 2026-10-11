@@ -1,0 +1,29 @@
+id: general/vulnerable-dependency
+name: 依赖里有已知漏洞
+severity: high
+applies_to: both
+audience: both
+detect:
+  kind: adapter
+  checker: pip-audit
+  params:
+    timeout_s: 300
+incident: |
+  依赖漏洞是**公开信息**：CVE 库、GitHub Advisory、各种扫描器都在盯着。
+  攻击者扫描一个服务的成本是零。
+
+  它同时是最容易修也最容易被忽略的一类问题 ——
+  「升级一个包」听起来无害，所以永远排在需求后面，
+  直到某天它变成一条安全通报。
+
+  这条规则由 `pip-audit`（PyPA 官方）报出，preflight 不自己维护漏洞库 ——
+  那种库必须持续更新，不是一个人能跟得上的。
+report: |
+  {name} {version} 有已知漏洞 {vuln_id}（修到 {fix}）。
+  → 漏洞是公开的，扫描成本为零。
+fix: |
+  升级到修复版本。升不动时至少确认：这个漏洞的触发路径在你的使用方式下
+  是否可达 —— **但不要用"我们应该没用到"来结案**，那是最常见的错误判断。
+refs:
+  - RULES.md §2
+stage: S2

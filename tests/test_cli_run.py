@@ -40,10 +40,18 @@ def dirty_repo(tmp_path: Path) -> Path:
 
 
 def test_run_on_clean_repo_exits_zero(clean_repo: Path) -> None:
+    """干净仓库 → 没有发现、退出码 0。
+
+    ⚠️ 判定可能是 ``GO`` 也可能是 ``INCOMPLETE``：档案里有 3 条依赖外部工具的
+    适配器规则（gitleaks / pip-audit），工具没装时它们会被跳过。那是正确的
+    —— **没查不等于没问题**。所以这里断言的是"没有发现 + 不拦 CI"，
+    而不是"一定是 GO"。
+    """
     result = runner.invoke(app, ["run", str(clean_repo)])
 
     assert result.exit_code == 0, result.stdout
-    assert "GO" in result.stdout
+    assert "NO-GO" not in result.stdout
+    assert "没有发现任何问题" in result.stdout
 
 
 def test_run_on_dirty_repo_exits_one(dirty_repo: Path) -> None:

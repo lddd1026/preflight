@@ -49,7 +49,10 @@ def _review(
     ignored: int = 0,
 ) -> Review:
     return Review(
-        target="/tmp/proj",
+        # ⚠️ 不要写 "/tmp/..." 这类硬编码的临时目录：ruff 的 S108 会报它，
+        # 而且报告里要的是一个**被检查的目标**，不是我们的临时文件。
+        # （这条是 preflight 自己用 ruff 查自己时发现的第一批问题之一。）
+        target="example/project",
         profile="cli-oss",
         fail_on=Severity.HIGH,
         started_at=START,

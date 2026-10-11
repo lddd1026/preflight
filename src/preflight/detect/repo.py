@@ -228,13 +228,30 @@ class Repo:
         return sorted(matched)
 
     def exists(self, relative: str) -> bool:
-        """这个相对路径存在吗（文件或目录）。"""
+        """这个相对路径存在吗（文件或目录）—— **只看已扫描到的文件**。"""
         cleaned = relative.strip("/")
         if cleaned in self.files:
             return True
         # 目录：看有没有以它开头的文件
         prefix = cleaned + "/"
         return any(name.startswith(prefix) for name in self.files)
+
+    def path_exists(self, relative: str) -> bool:
+        """这个相对路径在**磁盘上**存在吗。
+
+        ## 为什么需要它（和 ``exists`` 的区别）
+
+        ``exists`` 查的是**扫描结果**，而扫描**有意忽略** ``.venv`` /
+        ``node_modules`` 这类目录 —— 不忽略的话扫一个真实项目要几十秒，
+        而其中 99% 的文件和被检查的代码无关。
+
+        但那意味着"仓库里没有虚拟环境"这个结论是错的：
+        ``pip-audit --path .venv/...`` 需要看到它。
+
+        所以：**扫描器的忽略规则管的是"我们读什么"，不管"工具能看到什么"。**
+        需要把工具指向某个路径时，用这个函数查真实文件系统。
+        """
+        return (self.root / relative.strip("/")).exists()
 
     def is_dir(self, relative: str) -> bool:
         cleaned = relative.strip("/")

@@ -44,14 +44,37 @@ def test_clean_repo_has_no_findings(tmp_path: Path) -> None:
     """**这条测试是在防"对所有代码都报警"的假实现。**
 
     一个只会报警的 linter 能轻松通过"脏代码能报出来"，但会让工具完全没法用。
+
+    ⚠️ 判定**不一定是 GO**：S2 之后档案里多了 3 条适配器规则，
+    而它们依赖外部工具（gitleaks / pip-audit）。工具没装 → 那些规则被跳过 →
+    判定是 ``INCOMPLETE``。那是**正确**的行为：没查不等于没问题。
     """
     review = _run(write_knowledge(tmp_path / "clean", CLEAN))
 
     assert review.findings == [], f"干净仓库上报出了 {len(review.findings)} 条：\n" + "\n".join(
         f"  [{f.severity.value}] {f.rule_id} @ {f.location}" for f in review.findings
     )
-    assert review.verdict == "GO"
+    assert review.verdict in {"GO", "INCOMPLETE"}
     assert review.exit_code == 0
+    assert_only_missing_tools_were_skipped(review)
+
+
+def assert_only_missing_tools_were_skipped(review: object) -> None:
+    """跳过只允许来自「外部工具没装」，不允许来自别的地方。
+
+    这条断言把 ``INCOMPLETE`` 钉在**可解释的原因**上 —— 否则
+    "有规则没跑成"会变成一个能被任何东西触发的模糊状态，
+    而模糊的状态很快就会被所有人忽略。
+    """
+    from preflight.core.models import DetectKind, Review
+
+    assert isinstance(review, Review)
+    for entry in review.skipped:
+        rule = KNOWLEDGE.rules[entry.rule_id]
+        assert rule.detect.kind is DetectKind.ADAPTER, (
+            f"{entry.rule_id} 被跳过了，但它不是适配器规则：{entry.reason}"
+        )
+        assert "找不到工具" in entry.reason
 
 
 # --------------------------------------------------------------------------
@@ -64,14 +87,44 @@ def test_dirty_repo_triggers_every_selected_rule(tmp_path: Path) -> None:
 
     这是最容易被忽略的一种失败：规则文件语法正确、加载成功、跑的时候
     不报错 —— 只是一条发现都报不出来。
+
+    ⚠️ 适配器规则（依赖 gitleaks / pip-audit）在工具没装时会被**跳过**，
+    而"跳过"也是被交代清楚了的一种结果。所以这里断言的是更强的性质：
+    **每一条被选中的规则都必须有个交代** —— 要么报出发现，要么在跳过列表里。
+    真正会漏东西的情况（既没报也没跳）依然会被抓住。
     """
     review = _run(write_knowledge(tmp_path / "dirty", DIRTY))
 
     selected = {rule.id for rule in KNOWLEDGE.select(PROFILE)}
-    triggered = {finding.rule_id for finding in review.findings}
-    missed = sorted(selected - triggered)
+    accounted = {finding.rule_id for finding in review.findings} | {
+        entry.rule_id for entry in review.skipped
+    }
+    unaccounted = sorted(selected - accounted)
 
-    assert not missed, f"这些规则在脏仓库上一条都没报 —— 它们可能根本没接上检查器：{missed}"
+    assert not unaccounted, (
+        f"这些规则既没报发现、也没说明为什么没跑 —— 它们可能根本没接上检查器：{unaccounted}"
+    )
+    assert_only_missing_tools_were_skipped(review)
+
+
+def test_dirty_repo_fires_every_rule_that_does_not_need_a_tool(tmp_path: Path) -> None:
+    """不依赖外部工具的那些规则，**每一条都必须报**。
+
+    上一条测试允许"适配器规则被跳过"，这一条把范围收紧回去：
+    剩下 12 条内置规则在脏仓库上一条都不许漏。
+    """
+    from preflight.core.models import DetectKind
+
+    review = _run(write_knowledge(tmp_path / "dirty", DIRTY))
+
+    expected = {
+        rule.id for rule in KNOWLEDGE.select(PROFILE) if rule.detect.kind is not DetectKind.ADAPTER
+    }
+    triggered = {finding.rule_id for finding in review.findings}
+
+    assert expected - triggered == set(), (
+        f"这些内置规则在脏仓库上一条都没报：{sorted(expected - triggered)}"
+    )
 
 
 def test_dirty_repo_verdict_is_no_go(tmp_path: Path) -> None:

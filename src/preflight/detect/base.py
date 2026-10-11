@@ -21,7 +21,7 @@ DEBUG 日志 —— 因为"某条规则参数写错了"不该让另外 12 条规
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from preflight.core.models import Finding, Rule, Severity
@@ -35,6 +35,12 @@ class CheckContext:
     repo: Repo
     rule: Rule
     checker_name: str
+    #: 外部工具名 → 版本。**共享的可变字典**，由引擎创建、适配器写入。
+    #:
+    #: 为什么允许可变：工具版本是"跑到一半才知道"的事实，而且属于**整次运行**
+    #: 而不属于某一条规则。做成返回值就得让每个检查器都去管它，
+    #: 而绝大多数检查器根本不用外部工具。
+    tool_versions: dict[str, str] = field(default_factory=dict)
 
     # ---- 读参数 ----
     #
@@ -130,6 +136,23 @@ class Checker(Protocol):
         ...
 
 
+class CheckerSkipped(Exception):
+    """检查器说「这条我现在跑不了」。
+
+    ## 为什么需要它
+
+    有些规则依赖外部条件：工具没装、工具输出解析不了、工具超时。
+    这些都是"**没查**"，不是"查了没问题" —— 而这两件事在报告里必须长得不一样。
+
+    引擎捕获它之后会转成 :class:`~preflight.core.models.SkippedRule`，
+    于是这次评审变成 ``INCOMPLETE`` 而不是 ``GO``。
+
+    为什么用异常而不是"返回空列表 + 置一个标志"：返回空列表是**最常见的
+    静默失效**，它和"真的没问题"完全无法区分。异常让"我要跳过"成为一个
+    不可忽略的动作。
+    """
+
+
 class BaseChecker:
     """所有检查器的基类。给一个统一的名字属性与几个小工具。"""
 
@@ -167,4 +190,4 @@ def params_of(rule: Rule) -> Mapping[str, Any]:
     return rule.detect.params
 
 
-__all__ = ["BaseChecker", "CheckContext", "Checker", "params_of"]
+__all__ = ["BaseChecker", "CheckContext", "Checker", "CheckerSkipped", "params_of"]

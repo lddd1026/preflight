@@ -31,11 +31,28 @@ from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
+class FakeTool:
+    """一个假的外部工具的行为。
+
+    适配器类的规则没法靠"仓库里有什么"来区分正反例 ——
+    决定发现的是**工具的回报**。所以这类夹具多带一个字段描述假工具。
+    """
+
+    output: str = ""
+    version: str = "9.9.9"
+    error: str = ""
+    exit_code: int = 0
+
+
+@dataclass(frozen=True)
 class RuleFixture:
     dirty: dict[str, str] = field(default_factory=dict)
     clean: dict[str, str] = field(default_factory=dict)
     #: 这条夹具的「正反例差别是什么」—— 评审时先读这一句
     delta: str = ""
+    #: 适配器类规则才有：假工具的行为
+    dirty_tool: FakeTool | None = None
+    clean_tool: FakeTool | None = None
 
 
 FIXTURES: dict[str, RuleFixture] = {
@@ -158,6 +175,58 @@ FIXTURES: dict[str, RuleFixture] = {
                 'dependencies = ["requests>=2.31,<3"]\n'
             )
         },
+    ),
+    # ------------------------------------------------------------------
+    # 适配器类规则（S2）：决定发现的是**工具回报**，不是仓库内容，
+    # 所以正反例的差别写在 fake_tool 上。
+    # ------------------------------------------------------------------
+    "general/vulnerable-dependency": RuleFixture(
+        delta="正例的假 pip-audit 报出一个漏洞；反例报空数组。",
+        dirty={"requirements.txt": "requests==2.19.0\n"},
+        clean={"requirements.txt": "requests==2.32.0\n"},
+        dirty_tool=FakeTool(
+            version="pip-audit 2.7.3",
+            output=(
+                '{"dependencies": [{"name": "requests", "version": "2.19.0",'
+                ' "vulns": [{"id": "GHSA-9wx4-h78v-vm56", "fix_versions": ["2.31.0"],'
+                ' "description": "Certificate verification bypass."}]}]}'
+            ),
+        ),
+        clean_tool=FakeTool(
+            version="pip-audit 2.7.3",
+            output='{"dependencies": [{"name": "requests", "version": "2.32.0", "vulns": []}]}',
+        ),
+    ),
+    # ------------------------------------------------------------------
+    "general/leaked-secret": RuleFixture(
+        delta="正例的假 gitleaks 报出一条泄漏；反例报空数组。",
+        dirty={"src/app.py": "x = 1\n"},
+        clean={"src/app.py": "x = 1\n"},
+        dirty_tool=FakeTool(
+            version="gitleaks version 8.18.1",
+            exit_code=1,
+            output=(
+                '[{"RuleID": "generic-api-key", "Description": "Detected a Generic API Key",'
+                ' "File": "src/app.py", "StartLine": 3, "Commit": "abcdef1234567890"}]'
+            ),
+        ),
+        clean_tool=FakeTool(version="gitleaks version 8.18.1", output="[]"),
+    ),
+    # ------------------------------------------------------------------
+    "general/static-defect": RuleFixture(
+        delta="正例的假 ruff 报出一个未定义名字；反例报空数组。",
+        dirty={"src/app.py": "x = 1\n"},
+        clean={"src/app.py": "x = 1\n"},
+        dirty_tool=FakeTool(
+            version="ruff 0.17.0",
+            exit_code=1,
+            output=(
+                '[{"filename": "src/app.py", "code": "F821",'
+                ' "message": "Undefined name `undefined_thing`",'
+                ' "location": {"row": 7, "column": 12}}]'
+            ),
+        ),
+        clean_tool=FakeTool(version="ruff 0.17.0", output="[]"),
     ),
     # ------------------------------------------------------------------
     "message-queue/no-loss-backlog-recovery": RuleFixture(

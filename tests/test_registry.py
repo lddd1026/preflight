@@ -36,12 +36,13 @@ def test_shipped_corpus_loads(shipped: Knowledge) -> None:
 
     （触发记录，这就是绊线该有的样子：
     S0 加 ``general/env-not-ignored`` → 4 条；
-    S1 补齐 11 条通用规则 → **13 条**。）
+    S1 补齐 11 条通用规则 → 13 条；
+    S2 加 3 条适配器规则 → **16 条**。）
     """
     assert shipped.counts == {
         "invariants": 6,
         "mechanisms": 3,
-        "rules": 13,
+        "rules": 16,
         "profiles": 3,
     }
 
@@ -60,6 +61,10 @@ def test_shipped_rules_are_the_expected_ones(shipped: Knowledge) -> None:
         "general/no-test-layer",
         "general/no-eval-fingerprint",
         "general/unpinned-dependency-upper-bound",
+        # 适配器 3 条（S2）—— 编排外部工具，不自己实现规则
+        "general/vulnerable-dependency",
+        "general/leaked-secret",
+        "general/static-defect",
         # agent 专项 1 条（S3）
         "agent/no-request-timeout",
         # 矩阵规则 1 条（机制 × 不变量）

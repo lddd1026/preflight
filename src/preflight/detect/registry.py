@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 from preflight.core.specs import CHECKERS
+from preflight.detect.adapters import ADAPTERS
 from preflight.detect.ast_checks import (
     SwallowedExceptionChecker,
     TestsHitNetworkChecker,
@@ -38,6 +39,8 @@ _IMPLEMENTATIONS: tuple[Checker, ...] = (
     UnpinnedDependencyChecker(),
     NoEvalFingerprintChecker(),
     TestLayersChecker(),
+    # 适配器（S2）：编排外部工具，不自己实现规则
+    *ADAPTERS,
 )
 
 IMPLEMENTED: dict[str, Checker] = {checker.name: checker for checker in _IMPLEMENTATIONS}

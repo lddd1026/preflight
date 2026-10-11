@@ -255,6 +255,59 @@ _SPECS: tuple[CheckerSpec, ...] = (
             ),
         ),
     ),
+    # ---- 适配器：编排外部工具（S2） ----
+    #
+    # 三个适配器共用同一组参数形状：``tool_command`` 覆盖命令、
+    # ``timeout_s`` 控超时、``extra_args`` 追加参数。
+    # 各家额外需要的（如 ruff 的 ``select``）单独列在 optional 里。
+    CheckerSpec(
+        name="pip-audit",
+        kind=DetectKind.ADAPTER,
+        summary="编排 pip-audit：依赖漏洞",
+        implemented=True,
+        params=ParamSpec(
+            optional=("tool_command", "timeout_s", "extra_args"),
+            note=(
+                "自动确定审计目标：requirements.txt 优先，其次虚拟环境。\n"
+                "**都不存在时跳过而不是硬跑** —— 不带参数的 pip-audit 审计的是\n"
+                "preflight 自己运行的那个环境，那和被检查的仓库毫无关系，\n"
+                "而且会给出一个看起来很正常的结果。"
+            ),
+        ),
+    ),
+    CheckerSpec(
+        name="gitleaks",
+        kind=DetectKind.ADAPTER,
+        summary="编排 gitleaks：密钥泄漏（规则库 + 熵检测）",
+        implemented=True,
+        params=ParamSpec(
+            optional=("tool_command", "timeout_s", "extra_args"),
+            note=(
+                "和内置的 general/hardcoded-secret 不重复：那条是正则兜底，\n"
+                "这条覆盖面和准确度高得多。两条都报同一个密钥是可接受的 ——\n"
+                "**漏掉一个真密钥的代价远大于报告里多一行**。\n"
+                "CLI 在主版本之间改过名（detect → dir），所以适配器会依次\n"
+                "尝试多种命令形式，谁能解析出结果就用谁。"
+            ),
+        ),
+    ),
+    CheckerSpec(
+        name="ruff",
+        kind=DetectKind.ADAPTER,
+        summary="编排 ruff：静态缺陷与安全（F / E9 / B / S）",
+        implemented=True,
+        params=ParamSpec(
+            optional=("tool_command", "timeout_s", "extra_args", "select", "ignore"),
+            note=(
+                "默认 select = F,E9,B,S —— 上线评审要的是**缺陷**不是风格，\n"
+                "默认规则集里的几十条 E501 只会把真问题淹掉。\n"
+                "默认 ignore = S101（用了 assert）—— 它在测试文件里完全正常，\n"
+                "而实测一个干净仓库上一次就被它报了 3 条。\n"
+                "用 --no-cache 跑：ruff 默认会在被检查目录写 .ruff_cache/，\n"
+                "那等于**检查工具改变了被检查的东西**。"
+            ),
+        ),
+    ),
     # ---- 已登记、但排在后面阶段实现 ----
     CheckerSpec(
         name="missing-call-kwarg",

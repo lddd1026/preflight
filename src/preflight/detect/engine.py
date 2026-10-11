@@ -24,7 +24,7 @@ from pathlib import Path
 from preflight.core.models import Finding, Review, Rule, Severity, SkippedRule
 from preflight.core.specs import CHECKERS
 from preflight.detect import registry
-from preflight.detect.base import CheckContext
+from preflight.detect.base import CheckContext, CheckerSkipped
 from preflight.detect.ignore import apply_ignores
 from preflight.detect.repo import Repo
 
@@ -46,6 +46,8 @@ def run_rules(
 
     findings: list[Finding] = []
     skipped: list[SkippedRule] = []
+    # 外部工具版本由适配器写进这个共享字典（见 CheckContext.tool_versions）
+    tool_versions: dict[str, str] = {}
 
     for rule in rules:
         checker_name = rule.detect.effective_checker
@@ -63,9 +65,19 @@ def run_rules(
             skipped.append(SkippedRule(rule_id=rule.id, reason=reason))
             continue
 
-        context = CheckContext(repo=repo, rule=rule, checker_name=checker_name)
+        context = CheckContext(
+            repo=repo,
+            rule=rule,
+            checker_name=checker_name,
+            tool_versions=tool_versions,
+        )
         try:
             findings.extend(checker.run(context))
+        except CheckerSkipped as exc:
+            # 检查器主动说「这条我跑不了」（工具没装、输出解析不了…）。
+            # 这不是崩溃，是一条明确的**没查** —— 必须留痕，而且不刷 WARNING 日志。
+            logger.debug("检查器 %s 跳过 %s：%s", checker_name, rule.id, exc)
+            skipped.append(SkippedRule(rule_id=rule.id, reason=str(exc)))
         except Exception as exc:
             logger.warning("检查器 %s 在处理 %s 时抛异常", checker_name, rule.id, exc_info=True)
             skipped.append(
@@ -96,6 +108,7 @@ def run_rules(
         findings=findings,
         skipped=skipped,
         ignored=len(ignore_result.dropped),
+        tool_versions=dict(sorted(tool_versions.items())),
         knowledge_digest=knowledge_digest,
         duration_ms=int((time.perf_counter() - started) * 1000),
     )

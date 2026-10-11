@@ -385,6 +385,15 @@ class Review(BaseModel):
             "它让报告看起来干净，而那份干净是假的"
         ),
     )
+    tool_versions: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "这次评审实际用到的外部工具及版本，如 ``{'ruff': '0.17.0'}``。\n"
+            "**为什么必须记**：外部工具换了主版本，同一份代码可能得出不同结论 ——\n"
+            "和「模型版本必须标注」是同一个道理（约束 C-7）。没有这个，\n"
+            "「上次 3 个问题、这次 5 个」就分不清是被检查的代码变了还是工具变了。"
+        ),
+    )
     knowledge_digest: str | None = Field(
         default=None,
         description="知识语料的指纹。规则改了但报告没重跑，靠它看得出来",
