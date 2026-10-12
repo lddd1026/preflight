@@ -38,6 +38,15 @@ dev = [
     # 不加的话 mypy 报 "Library stubs not installed for yaml"，而正确的处理是
     # **装存根**，不是用 ignore 把它压掉 —— 压掉就等于放弃了类型检查。
     "types-PyYAML>=6.0,<7",
+    # 构建后端。
+    #
+    # 为什么它在 dev 里：有一条测试**真的去构建一次 wheel** 并检查内容 ——
+    # 因为项目曾经在 S0–S7 期间**根本构建不出 wheel**（`force-include`
+    # 把 knowledge/ 打了两遍），而本地一直"能跑"（用的是可编辑安装）。
+    #
+    # 那条测试用 `--no-build-isolation`（快、不联网），代价就是
+    # hatchling 得在环境里。
+    "hatchling",
 ]
 
 # 外部工具适配器（S2）**是可选的**。
@@ -74,13 +83,20 @@ preflight = "preflight.cli:main"
 Repository = "https://github.com/lddd1026/preflight"
 
 [tool.hatch.build.targets.wheel]
+# `packages` 会把 `src/preflight/` 下的**所有文件**打进 wheel ——
+# 包括 `knowledge/` 的 YAML 和 `demo/` 的演示素材，不需要按扩展名过滤。
+#
+# ⚠️ 这里曾经有一条 `force-include` 把 `knowledge/` 又打了一遍，
+# 结果是 **wheel 根本构建不起来**：
+#
+#     ValueError: A second file is being added to the wheel archive
+#     at the same path: `preflight/knowledge/claims/verification.yaml`
+#
+# 而它在本地**永远发现不了** —— 开发时用的是 `pip install -e .`（可编辑安装），
+# 那根本不构建 wheel。是 S8 的 Docker 构建第一次把它逼出来的。
+#
+# 教训：**"本地能跑"和"装得上"是两件事。** 而后者只有真去构建一次才知道。
 packages = ["src/preflight"]
-
-# 知识语料是 YAML，必须进 wheel —— 否则装完之后一条规则都加载不到。
-# 这类"装好了但少了数据文件"的问题在开发机上永远看不出来（本地是源码目录），
-# 只有 pip install 完才会暴露。显式声明，别指望默认行为。
-[tool.hatch.build.targets.wheel.force-include]
-"src/preflight/knowledge" = "preflight/knowledge"
 
 [tool.ruff]
 line-length = 100
@@ -88,7 +104,12 @@ target-version = "py311"
 src = ["src", "tests"]
 # 排除 markdown：docs/ 里的代码示例是给人看的，注释对齐是刻意的，
 # 不希望被 ruff format 重排。
-extend-exclude = ["*.md"]
+#
+# ⚠️ 也排除 `src/preflight/demo/` —— 那是**数据不是源码**。
+# 让 linter 去检查一份"故意写坏"的演示素材，得到的是"这份素材确实是坏的"，
+# 而那正是它存在的理由。真正要守的是**它坏得符合预期**
+# （由 tests/test_acceptance_s3.py 守着）。
+extend-exclude = ["*.md", "src/preflight/demo"]
 
 [tool.ruff.lint]
 # ⚠️ 这里的 select **包括 S（bandit 安全规则）**，是因为一件事：
@@ -128,6 +149,17 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 disallow_untyped_defs = true
 no_implicit_optional = true
+
+# ⚠️ `src/preflight/demo/` 是**演示素材，不是源码**。
+#
+# 两份 agent 故意写得一份坏一份好（那是它存在的理由），它们不构成一个包 ——
+# 两边的 `tests/test_agent.py` 同名，mypy 会报 "Duplicate module named"。
+#
+# **必须用 `exclude` 而不是 override 里的 `ignore_errors`**：
+# override 是在**发现完文件之后**才生效的，而"重复模块名"这个错误
+# 恰恰发生在发现阶段 —— 那时 override 还没轮到。
+# 这个区别花了一次失败才搞清楚。
+exclude = "preflight[/\\\\]demo"
 
 # litellm 是**可选依赖**（`[llm]` extra），typing 也不完整。
 #

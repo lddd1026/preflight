@@ -24,6 +24,8 @@
 
 from __future__ import annotations
 
+from preflight.demo import demo_files
+
 # --------------------------------------------------------------------------
 # DOCS：一个"文档齐全"的项目 —— 文档发现与分类的夹具
 #
@@ -92,6 +94,192 @@ DOCS_MUST_NOT_APPEAR: tuple[str, ...] = (
     "node_modules/left-pad/README.md",
     ".pytest_cache/README.md",
 )
+
+
+# --------------------------------------------------------------------------
+# 三个不同技术栈的项目 —— 机制探测的夹具
+#
+# ## 为什么要三份，而且技术栈不同
+#
+# 这一层的核心主张是「**按机制 × 不变量检查，而不是按项目类别检查**」。
+# 要证明它，就得让三份**看起来完全不同**的项目推导出**不同**的结果 ——
+# 如果三份的结果一样，那说明我们其实没在看机制。
+#
+# 三份都用**强线索**（依赖清单 + 环境模板）：
+# 弱线索不算探测到，拿弱线索做夹具会测出一条实际上不生效的路径。
+# --------------------------------------------------------------------------
+
+_MQ_SERVICE: dict[str, str] = {
+    "pyproject.toml": (
+        "[project]\n"
+        'name = "mq-service"\n'
+        'version = "0.1.0"\n'
+        "dependencies = [\n"
+        '    "aiokafka>=0.10",\n'
+        '    "asyncpg>=0.29",\n'
+        "]\n"
+    ),
+    ".env.example": "KAFKA_BROKERS=localhost:9092\nDATABASE_URL=postgresql://localhost/app\n",
+    "src/consumer.py": ('"""消费者。"""\n\n\nasync def handle(message):\n    return message\n'),
+}
+
+_WEB_API: dict[str, str] = {
+    "pyproject.toml": (
+        "[project]\n"
+        'name = "web-api"\n'
+        'version = "0.1.0"\n'
+        "dependencies = [\n"
+        '    "sqlalchemy>=2.0",\n'
+        '    "redis>=5.0",\n'
+        "]\n"
+    ),
+    ".env.example": "DATABASE_URL=postgresql://localhost/app\nREDIS_URL=redis://localhost:6379\n",
+    "src/views.py": '"""视图。"""\n\n\ndef index():\n    return "ok"\n',
+}
+
+_BATCH_JOB: dict[str, str] = {
+    "pyproject.toml": (
+        "[project]\n"
+        'name = "batch-job"\n'
+        'version = "0.1.0"\n'
+        "dependencies = [\n"
+        '    "apscheduler>=3.10",\n'
+        '    "boto3>=1.34",\n'
+        "]\n"
+    ),
+    ".env.example": "S3_BUCKET=my-bucket\nAWS_ACCESS_KEY_ID=xxx\n",
+    "src/job.py": '"""批处理。"""\n\n\ndef run():\n    return None\n',
+}
+
+#: 机制探测的三份夹具 → 应该探测到哪些机制
+MECHANISM_FIXTURES: dict[str, tuple[dict[str, str], tuple[str, ...]]] = {
+    "mq-service": (_MQ_SERVICE, ("message-queue", "relational-db")),
+    "web-api": (_WEB_API, ("cache", "relational-db")),
+    "batch-job": (_BATCH_JOB, ("object-storage", "scheduled-job")),
+}
+
+# --------------------------------------------------------------------------
+# CLEAN：一个"什么毛病都没有"的项目
+#
+# 注意它是**相对当前规则集**干净，不是绝对干净 ——
+# 比如 no-loss-backlog-recovery 要求 tests/ 里提到"积压"，
+# 所以这份"干净仓库"里就得有一个积压恢复测试。
+# 这正是"干净"该有的定义：相对于你选的那套规则。
+# --------------------------------------------------------------------------
+
+CLEAN: dict[str, str] = {
+    ".gitignore": "__pycache__/\n*.pyc\n.env\n!.env.example\n",
+    "README.md": "# demo\n\n一个示例项目。\n",
+    "RUNBOOK.md": (
+        "# 运维\n\n"
+        "## 部署\n\n执行 `scripts/deploy.sh`。\n\n"
+        "## 回滚\n\n执行 `scripts/rollback.sh`，约 2 分钟生效。\n"
+        "不可回滚的边界：数据库迁移之后不要回滚代码。\n"
+    ),
+    "pyproject.toml": (
+        '[project]\nname = "demo"\nversion = "0.1.0"\n'
+        'requires-python = ">=3.11"\n'
+        'dependencies = ["httpx>=0.27,<1"]\n'
+    ),
+    ".env.example": "# 把这一份复制成 .env\nAPP_LLM_MODEL=fast\nAPP_LOG_LEVEL=info\n",
+    "src/app.py": (
+        "import os\n\n\n"
+        "def config() -> dict[str, str]:\n"
+        '    """读配置。注意这里读的名字和 .env.example 里写的**必须一致**。"""\n'
+        "    return {\n"
+        "        'model': os.environ['APP_LLM_MODEL'],\n"
+        "        'level': os.getenv('APP_LOG_LEVEL', 'info'),\n"
+        "    }\n"
+    ),
+    "tests/test_config.py": (
+        "from src.app import config\n\n\n"
+        "def test_config_reads_env(monkeypatch):\n"
+        "    monkeypatch.setenv('APP_LLM_MODEL', 'fast')\n"
+        "    assert config()['model'] == 'fast'\n"
+    ),
+    "tests/test_integration_flow.py": (
+        'def test_full_flow():\n    """集成层：走一遍真实链路。"""\n    assert True\n'
+    ),
+    "tests/test_backlog_recovery.py": (
+        "def test_backlog_after_consumer_restart():\n"
+        '    """消费者停四小时后恢复：一条不能丢，死信队列要清空。"""\n'
+        "    assert True\n"
+    ),
+}
+
+# --------------------------------------------------------------------------
+# DIRTY：每一条规则都要报出来
+#
+# 这份夹具是"规则有没有真的接上"的验收 —— 少一条红，就说明那条规则
+# 从"能加载"到"真能查"之间断了。
+# --------------------------------------------------------------------------
+
+_DIRTY_SECRET_KEY = "sk-abcdefghijklmnopqrstuvwx"
+
+DIRTY: dict[str, str] = {
+    # ① 没有 .gitignore → env-not-ignored
+    # ② 密钥字面量 → hardcoded-secret
+    "src/app.py": (
+        f'TOKEN = "{_DIRTY_SECRET_KEY}"\n\n\n'
+        "def load():\n"
+        "    try:\n"
+        "        return 1\n"
+        "    except Exception:\n"
+        "        pass\n\n\n"
+        "def poll(client):\n"
+        "    while True:\n"
+        "        client.send('ping')\n"
+    ),
+    # ③ 模板名字和代码读的名字对不上 → config-name-drift
+    "src/config.py": "import os\n\nMODEL = os.environ['APP_LLM_MODEL']\n",
+    ".env.example": "APP_MODEL=fast\n",
+    # ④⑤ 没有 RUNBOOK → no-rollback-plan + no-runbook
+    "README.md": "# demo\n\n一个示例项目。\n",
+    # ⑥ 依赖只有下界 → unpinned-dependency-upper-bound
+    "pyproject.toml": (
+        '[project]\nname = "demo"\nversion = "0.1.0"\ndependencies = ["httpx>=0.27"]\n'
+    ),
+    # ⑦ 测试里真发请求 → tests-hit-network
+    # ⑧ 只有单元测试，没有集成层 → no-test-layer
+    # ⑨ 测试里没提"积压" → message-queue/no-loss-backlog-recovery
+    "tests/test_api.py": (
+        "import requests\n\n\n"
+        "def test_health():\n"
+        "    assert requests.get('https://example.com').status_code == 200\n"
+    ),
+    # ⑩ 有评测数据但没有指纹 → no-eval-fingerprint
+    "eval/cases.json": '[{"q": "a"}]\n',
+}
+
+# --------------------------------------------------------------------------
+# EMPTY：什么都没有
+# --------------------------------------------------------------------------
+
+EMPTY: dict[str, str] = {}
+
+
+# --------------------------------------------------------------------------
+# BROKEN_AGENT / CLEAN_AGENT：**从随包发布的 demo 目录读**
+#
+# ## 为什么不在这里硬编码
+#
+# 单一来源。手写两份（一份给测试、一份给 `preflight demo`）的结果是它们
+# **慢慢分叉**：改了一边忘了另一边，而 demo 还会继续跑得好好的 ——
+# 直到有人发现 demo 展示的东西和测试测的东西不是一回事。
+#
+# 素材本身在 `src/preflight/demo/`，跟着 wheel 一起发出去 ——
+# 那是「不配 API Key、不联网也能看到结果」的物理基础。
+#
+# ## 两份 demo 的关系
+#
+# `broken-agent` 是一个「每一条 agent 规则都踩了」的实现，
+# `clean-agent` 是**同样的功能、另一种写法**。
+# 它们的差别不是「多了很多代码」，而是一处一处的小东西：
+# 一次 `try`、一个 `Semaphore`、一句告诉模型「被截断了」的话。
+# --------------------------------------------------------------------------
+
+BROKEN_AGENT: dict[str, str] = demo_files("broken-agent")
+CLEAN_AGENT: dict[str, str] = demo_files("clean-agent")
 
 
 # --------------------------------------------------------------------------

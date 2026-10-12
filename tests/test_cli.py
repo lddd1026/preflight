@@ -7,8 +7,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+from rich.console import Console
 from typer.testing import CliRunner
 
 from preflight import __version__
@@ -207,6 +209,45 @@ def test_knowledge_check_reports_file_and_field(tmp_path: Path) -> None:
     assert result.exit_code == 1, result.stdout
     assert "a-rule.yaml" in result.stdout, "报错要指出是哪个文件"
     assert "severity" in result.stdout, "报错要指出是哪个字段"
+
+
+def test_error_paths_survive_a_narrow_terminal(tmp_path: Path) -> None:
+    """**窄终端里路径不许被折断成两行。**
+
+    ## 这一条是 Linux 上炸出来的
+
+    原来的实现用的是普通的 ``console.print(f"...{path}...")``，
+    而 rich 会按终端宽度**软换行**。在 Linux 的 80 列终端里，
+    一个 ``/tmp/pytest-of-root/pytest-0/.../a-rule.yaml`` 被折成
+
+        .../a-r
+        ule.yaml
+
+    于是 1) 用户复制那个路径会拿到垃圾，2) 上面那条断言红了。
+
+    ## 为什么必须固定终端宽度来测
+
+    它是个**只在特定宽度下出现**的 bug —— 在 Windows 上一直是绿的，
+    因为那几个终端恰好更宽。不固定宽度的话，这条测试就是碰运气。
+    """
+    root = tmp_path / "knowledge"
+    (root / "rules").mkdir(parents=True)
+    # 故意起一个长路径，让它在窄终端里非折不可
+    (root / "rules" / "a-very-long-rule-file-name.yaml").write_text(
+        "id: demo/ok\nname: 名字\nseverity: 编造的级别\n"
+        "applies_to: both\ndetect:\n  kind: exists\n  params:\n    path: .\n"
+        "incident: 出过事\nreport: 报什么\nfix: 怎么修\n",
+        encoding="utf-8",
+    )
+
+    narrow = Console(width=40, force_terminal=False, no_color=True)
+    with patch("preflight.cli.console", narrow):
+        result = runner.invoke(app, ["--knowledge", str(root), "knowledge-check"])
+
+    assert result.exit_code == 1, result.stdout
+    assert "a-very-long-rule-file-name.yaml" in result.stdout, (
+        "40 列终端里路径被折断了 —— 用户复制它会拿到垃圾"
+    )
 
 
 def test_knowledge_option_does_not_leak_between_invocations(tmp_path: Path) -> None:

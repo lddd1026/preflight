@@ -1,0 +1,3 @@
+MODEL = "gpt-4o-mini"
+MAX_STEPS = 10
+CONTEXT_LIMIT = 100000

@@ -2,8 +2,48 @@
 
 **上线前的自动评审。**
 
-> 现有工具各查一段，各出一个报告。`preflight` 把它们和 agent 专属的检查收拢成**一次评审**，
-> 并且记住**谁因为什么豁免了哪一条**。
+> CI 告诉你「测试通过了没有」。
+> `preflight` 告诉你「**该做的测试有没有被做过**」。
+
+---
+
+## 30 秒看完它是什么
+
+不配 API Key、不联网、装完就能跑：
+
+```bash
+pip install preflight-check
+preflight demo
+```
+
+```
+preflight demo　档案 agent-enterprise　（零 LLM、零联网）
+
+🔴 broken-agent　15 条发现（agent 专项 14 条）　判定 NO-GO
+🟢 clean-agent　0 条发现（agent 专项 0 条）　　判定 INCOMPLETE
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ 规则                          ┃ broken-agent ┃ clean-agent ┃ 为什么重要   ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ agent/no-request-timeout      │      ❌      │     —      │ 模型调用没有… │
+│ agent/no-output-limit         │      ❌      │     —      │ 模型调用的输… │
+│ agent/no-context-guard        │      ❌      │     —      │ agent 循环里… │
+│ agent/no-budget-breaker       │      ❌      │     —      │ 没有成本/用量…│
+│ agent/tool-exception-uncaught │      ❌      │     —      │ 工具分发没有… │
+│ agent/unbounded-parallel-tools│      ❌      │     —      │ 并行工具调用… │
+│ agent/truncation-without-notice│     ❌      │     —      │ 截断了，但没… │
+│ agent/plain-text-ends-session │      ❌      │     —      │ 「模型没调工…│
+└───────────────────────────────┴─────────────┴────────────┴──────────────┘
+```
+
+**两份 agent 的文件结构完全一样**，差别只在几行保护代码上：
+一次 `try`、一个 `Semaphore`、一句告诉模型「被截断了」的话。
+
+> **agent 的可靠性不在算法里，在这些细节里。**
+> 而这几行恰好是最容易忘、也最难在 code review 里看出来的东西。
+
+想看完整对照：`preflight demo --which both`。
+想看它在你自己的项目上说什么：`preflight run .`
 
 ---
 
@@ -71,8 +111,10 @@
 **现在能跑什么：**
 
 ```powershell
-pwsh -File scripts/setup.ps1          # 建 .venv 装依赖
+pip install preflight-check           # 或者从源码：pwsh -File scripts/setup.ps1
 
+preflight version                     # 看版本和语料指纹
+preflight demo                        # ⭐ 离线 demo：不配 API Key、不联网就能看到对比
 preflight run .                       # ⭐ 跑一次上线前评审（零 LLM、零联网）
 preflight run . -p agent-enterprise   # 换一个场景档案（门禁更严）
 preflight run . -f markdown -o RELEASE_REVIEW.md
@@ -282,11 +324,22 @@ pip install -e ".[dev,tools]"         # 装 pip-audit + ruff
 | S5 | 证据核对 + 防幻觉 + 文档兑现率 | ✅ 10/10 编造被拒；兑现率 95%（分母 43/204） |
 | S6 | 机制探测 + 矩阵推导（10 机制 × 6 不变量） | ✅ 三份夹具两两不同；推理链含文件行 |
 | S7 | 人工签核 + 豁免 + CI 门禁（4 个档案，必答 5 条） | ✅ 报告可从 JSON 逐字节重建 |
-| S8 | 打包发布 | ⬜ |
+| S8 | 打包发布（Docker + 离线 demo + 文档一致性） | ⚠️ 干净容器验证过；**未发布 PyPI**（名字冲突） |
+| S9 | 短文：[我踩过的坑](docs/PITFALLS.md) | ✅ 18 条血案 |
 
-**当前规模**：72 个 Python 文件 · **480 passed + 3 skipped** ·
+**当前规模**：74 个 Python 文件 · **503 passed + 3 skipped** ·
 语料 29 条规则 / **10 个机制（48 格）** / 6 条不变量 / **4 个档案** /
-5 条必答 + 4 条条件展开 · mypy 全绿。
+5 条必答 + 4 条条件展开 · Docker 镜像可跑 · mypy 全绿。
+
+> **⚠️ 名字冲突（发布前必须解决）**
+>
+> `preflight` 这个**导入包名和命令名**已被活跃项目
+> [`preflight-gate`](https://pypi.org/project/preflight-gate/) 占用
+> （它的 README 里明写着 import / command / schema 都叫 `preflight`）。
+> 两者同时安装会**静默互相覆盖模块文件** —— 比"命令被抢"更糟。
+>
+> `precheck` / `shipcheck-cli` / `launchcheck` / `preflight-ai` 也全被占用。
+> 所以这是一个**必须改名**的问题，而不是"换个 dist 名就行"。
 
 进度细节见 [docs/PROGRESS.md](docs/PROGRESS.md)。
 

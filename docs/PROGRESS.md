@@ -1668,9 +1668,207 @@ $ preflight review . --today 2026-10-11
 
 ---
 
-## S8 · 包装与发布  `[ ]`　🏁 v1.0
+## S8 · 包装与发布  `[x]`　⚠️ **达标，但发布未完成**　🏁 v1.0
 
-（待填写）
+**开始日期**：2026-10-11　**完成日期**：2026-10-11
+
+**🎯 目标**：陌生人 5 分钟能跑通，并且相信上面的数字。
+
+### 任务结果
+
+| 编号 | 任务 | 状态 | 实际产出 |
+| --- | --- | --- | --- |
+| PF-44 | Docker 化 + 离线 demo | [x] | `Dockerfile` + `.dockerignore` + `preflight demo`；**干净容器里验证过** |
+| PF-45 | README 第一屏 | [x] | broken-agent vs clean-agent 的对比输出直接放第一屏 |
+| PF-46 | 文档补完 + 交叉引用无死链 | [x] | 三条测试守着：死链 / PF 编号对齐 / 命令都在 README 里 |
+| PF-47 | 名字查重 | [x] | **查出真冲突** —— 见下，需要改名才能发布 |
+| PF-48 | 发布 PyPI + Git tag + CI 徽章 | [ ] | **未做** —— 理由见「为什么没发布」 |
+| PF-49 | 一篇短文：「我踩过的坑」 | [x] | [docs/PITFALLS.md](PITFALLS.md) |
+
+**新增**：`Dockerfile`、`.dockerignore`、`src/preflight/demo/`（随包发布的 demo 素材）、
+`preflight demo` 命令、`tests/test_release.py`（包装 + 文档一致性）、`docs/PITFALLS.md`。
+
+### ⭐⭐ 这一阶段最大的价值：**Docker 构建逼出了三个只在"装完之后"出现的问题**
+
+"CI 从没跑过"这件事拖了八轮。而这一轮的 Docker 干净容器**一次就顶上了**，
+并且立刻找出三个本地永远发现不了的问题：
+
+| # | 问题 | 为什么本地发现不了 |
+| --- | --- | --- |
+| 1 | **wheel 根本构建不起来** | 本地用 `pip install -e .`（可编辑安装）—— **它不构建 wheel** |
+| 2 | **`__pycache__/*.pyc` 被当文本读** | 本地 `src/preflight/demo/__pycache__` 是跑过之后才生成的，所以"本地能跑"纯属时间巧合 |
+| 3 | **rich 在窄终端里把长路径折成两行** | Windows 上那几个终端恰好更宽 —— 只在 Linux 的 80 列下暴露 |
+
+**这三个问题的共同点：它们都不是"逻辑错误"，而是"装完之后的世界和开发时的世界不一样"。**
+而那正是 CI 唯一能提供、而本地开发给不了的东西。
+
+### 缺陷详录
+
+#### 缺陷一：wheel 从 S0 起就构建不出来（P0，**上线阻塞**）
+
+```
+ValueError: A second file is being added to the wheel archive
+at the same path: `preflight/knowledge/claims/verification.yaml`.
+```
+
+`packages = ["src/preflight"]` 已经把 `knowledge/` 打进 wheel 了，
+而我又写了一条 `force-include` 把它再打一遍 → 重复路径 → 构建失败。
+
+**为什么拖了八个阶段**：开发全程用 `pip install -e .`，**那根本不构建 wheel**。
+而"本地能跑"和"装得上"是两件事 —— 后者只有真去构建一次才知道。
+
+修法：删掉那条多余的 `force-include`（它的注释担心"YAML 进不了 wheel"，
+而 hatchling 的 `packages` 包含目录下**所有**文件，不按扩展名过滤）。
+
+**加了一条测试真的去构建一次 wheel 并检查内容** —— 任何"检查 pyproject 配置"
+的替代方案都发现不了这个 `ValueError`。
+
+#### 缺陷二：`demo_files` 把字节码当文本读（P0）
+
+`preflight demo` 装完之后直接崩：
+
+```
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xf3 in position 0
+```
+
+`root.rglob("*")` 把 pip 字节码编译产生的
+`preflight/demo/__pycache__/__init__.cpython-313.pyc` 也收进来了。
+
+修法：`_is_source_file()` 跳过 `__pycache__` 和 `.pyc/.pyo/.so`。
+**并且加了单元版本**（测那个函数，而不是测"wheel 里没有 pycache"）——
+因为"今天 wheel 里没有"是事实，"读到字节码要跳过"是这条代码的性质。
+
+#### 缺陷三：rich 在窄终端里折断长路径（P0）
+
+Linux 上一条 S0 就有的测试红了：
+
+```
+assert 'a-rule.yaml' in ".../rules/a-r\nule.yaml"
+```
+
+rich 按终端宽度**软换行**，把路径折成两行。后果不只是测试红 ——
+**用户复制那个路径会拿到垃圾**。
+
+修法：路径和字段路径两行加 `soft_wrap=True` —— 那是我们自己产出的、
+有精确含义的东西，不能让渲染层去折它。
+
+**并加了一条把终端宽度固定成 40 列的测试**，而且**验证过它去掉修复就红**。
+
+> 这一条值得单独记：一个"只在特定终端宽度下出现"的 bug，
+> 不固定宽度的测试就是碰运气。而它在 Windows 上绿了八个阶段。
+
+#### 缺陷四：**查重查出真冲突 —— CLI 和导入包的名字都被占了**（P0，未解决）
+
+**这是 PF-47 的结论，而且比预想严重。**
+
+| 名字 | 状态 |
+| --- | --- |
+| PyPI `preflight` | 占用（2015 年的 Django 项目） |
+| PyPI `preflight-gate` | **占用，而且活跃** —— 2026-09-01 发布 0.7.0，已有 0.8.0a2 |
+| PyPI `preflight-ai` / `precheck` / `shipcheck-cli` / `launchcheck` | 全被占用 |
+| GitHub `preflight` | 多个同名仓库（`felixgeelhaar/preflight`、`preflightsh/preflight`） |
+
+**`preflight-gate` 的 README 里明写着：**
+
+> The distribution is `preflight-gate`; **the import, the command, and the
+> manifest schema are all `preflight`**. PyPI's `preflight` is an unrelated
+> Django project last released in 2015, so that name was never available.
+
+也就是说，它已经占用了 **`preflight` 这个导入包名和命令行名**。
+而它的定位（**agent 工具信任边界**）和我们的目标用户**完全重叠**。
+
+**具体后果**：`pip install preflight-check` 和 `pip install preflight-gate`
+同时装的话，两者都提供 `preflight/` 这个导入包和 `preflight` 这个命令 ——
+**pip 会互相覆盖文件**，谁后装谁赢。这比"命令被抢"更糟：
+它是**静默的模块级覆盖**。
+
+**这是一个必须改名才能发布的问题**，而改名是一次 70+ 文件的机械改动。
+**本轮没有做**，理由写在「为什么没发布」里。
+
+### 为什么没发布（PF-48 未做）
+
+三条，按重要性排：
+
+1. **名字冲突没解决**（上面缺陷四）。改名要动 70+ 文件的包名、导入、CLI、文档、
+   测试，是一次有风险的机械改动 —— **不该在发布这一步顺手做**。
+   而且这是个需要你拍板的决定（叫什么名字是你的项目的第一印象）。
+2. **没有 PyPI 凭证**，也不该由我替你注册和上传。
+3. **CI 仍然一次都没跑过** —— 下面那条"CI 全绿"只做到了它的**等价物**（Linux 容器），
+   不是真的绿。把一个"从没在 CI 上绿过"的包推到 PyPI，是在拿别人的环境做实验。
+
+**已经准备好的**：wheel 能构建了、内容验证过了、`pip install .` 在干净容器里能跑、
+Docker 镜像能跑 demo。**只差名字和凭证。**
+
+### ⭐ 阶段测试结果（PLAN 的四条，逐条对照）
+
+**① 干净环境测试：全新容器 → pip install → 跑 demo → 成功** ✅
+
+```
+$ docker build -t preflight:dev .
+$ docker run --rm preflight:dev
+
+preflight demo　档案 agent-enterprise　（零 LLM、零联网）
+
+🔴 broken-agent　15 条发现（agent 专项 14 条）　判定 NO-GO
+🟢 clean-agent　0 条发现（agent 专项 0 条）　　判定 INCOMPLETE　（3 条规则依赖外部工具，这台机器上没装）
+```
+
+**这份输出是整个项目最有说服力的一屏**：两份 agent 的文件结构完全一样，
+差别只在几行保护代码上。
+
+**② 离线测试** ✅ —— `preflight demo` 不读环境变量、不联网、不调模型。
+容器的 `pip install` 装在构建期，运行期一个网络请求都没有。
+
+**③ 文档一致性** ✅ —— 三条测试：
+- 每个 PF 编号在 PROGRESS 里都有记录
+- 每个阶段（S0–S8）都有一节
+- 所有 markdown 里的相对链接都不是死链
+- README 里提到了每一个 CLI 命令
+
+> 死链那条测试**自己先错了一次**：朴素的 markdown 链接正则把
+> `` `tools[call.name](**call.args)` `` 这行 **Python** 当成了链接，
+> 于是两份本来正确的文档被判"有死链"。
+> **修的是检测器，不是文档** —— 文档没问题，是检测器把代码当成了散文。
+
+**④ CI 全绿** ⚠️ **只做到等价物** —— 在 Linux 容器里跑了全套：
+
+```
+$ docker run --rm -v ...:/src -w /src python:3.13-slim \
+    sh -c "pip install -e '.[dev]' && python -m pytest -q"
+```
+
+跑出了上面那三个"只在装完之后出现"的问题，还包括那个
+**只在 Linux 的 80 列终端下暴露**的折行 bug。
+
+**但这不是 CI。** CI 会在 Ubuntu **和 Windows** 上、Python **3.11 和 3.13** 上跑 ——
+四个组合。而项目从 S0 到今天，**一个组合都没在 CI 上跑过**。
+
+### 与计划的偏差
+
+| # | 偏差 | 原因 | 处理 |
+| --- | --- | --- | --- |
+| 1 | **demo 素材改为随包发布**（`src/preflight/demo/`） | "不配 API Key 也能看"要求素材跟着 wheel 走，而它原来只活在 `tests/` 里 | 测试夹具**改为从 demo 目录读** —— 单一来源，不会分叉 |
+| 2 | **加了一条"真的构建 wheel"的测试** | 见缺陷一 | `hatchling` 因此进了 `dev` extras |
+| 3 | **`src/preflight/demo/` 排除出 ruff / mypy** | 那是**数据不是源码**：一份故意写坏的演示素材，linter 检查它只会得出"它确实是坏的" | 真正要守的是"它坏得符合预期"（`test_acceptance_s3.py` 守着） |
+| 4 | **PF-48 未做** | 见「为什么没发布」 | 需要你决定名字 |
+
+### 遗留问题
+
+| # | 问题 | 影响 | 计划何时处理 |
+| --- | --- | --- | --- |
+| 1 | **名字冲突未解决** | `preflight` 的导入包名和命令名都被 `preflight-gate` 占用 → 同时安装会静默互相覆盖 | **发布前必须做**，需要你拍板新名字 |
+| 2 | **CI 一次都没跑过** | 四个组合（Ubuntu/Windows × 3.11/3.13）零验证 | 建 remote 即可 |
+| 3 | **仓库仍只有本地 git** | 14 个提交没有任何备份 | 建议立即 |
+| 4 | **没有 PyPI 凭证** | 无法真的发布 | 你的决定 |
+| 5 | 没有 YAML 语法 lint | 同一个坑（`**` 开头的值）踩了三次 | 长期 |
+| 6 | 问卷答案还没接到严重度/门禁上 | 目前只进报告 | S7 遗留，记在这里 |
+
+### 文档更新检查
+
+- [x] PLAN.md：S8 标 ✅ 与偏差
+- [x] PROGRESS.md：本章节
+- [x] README.md：第一屏对比 + `demo` / `version` 命令
+- [x] 新增 [docs/PITFALLS.md](PITFALLS.md)（PF-49）
 
 ---
 

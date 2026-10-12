@@ -9,7 +9,10 @@ S0 阶段只有四条命令：``version`` / ``list-rules`` / ``explain`` / ``kno
 from __future__ import annotations
 
 import json
+import shutil
 import sys
+import tempfile
+from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -22,7 +25,7 @@ from rich.table import Table
 from preflight import __version__
 from preflight.core.claims import Claim, Verdict, Verification
 from preflight.core.interact import Answer, Waiver
-from preflight.core.models import Rule, Severity
+from preflight.core.models import Review, Rule, Severity
 from preflight.core.registry import (
     Knowledge,
     KnowledgeLoadError,
@@ -35,6 +38,7 @@ from preflight.core.report import (
     render_terminal,
     write_report,
 )
+from preflight.demo import DEMOS, demo_files
 from preflight.detect.derive import derive_checks
 from preflight.detect.engine import run_path
 from preflight.detect.probe import probe_mechanisms
@@ -118,8 +122,21 @@ def _load() -> Knowledge:
         console.print(f"[red]语料加载失败：{len(exc.errors)} 处问题[/red]")
         console.print()
         for error in exc.errors:
-            console.print(f"  [red]✗[/red] [bold]{_display_path(error.path)}[/bold]")
-            console.print(f"      [cyan]{error.field_path or '<root>'}[/cyan]")
+            # ⚠️ `soft_wrap=True` 不是装饰。
+            #
+            # 实测：在 Linux 的 80 列终端里，rich 把长路径**折成了两行** ——
+            # `/tmp/.../rules/a-r` + `ule.yaml`。于是
+            # 1. 用户复制那个路径会拿到垃圾
+            # 2. 一条断言 `"a-rule.yaml" in stdout` 的测试红了
+            #
+            # 而它在 Windows 上一直是绿的（终端宽度不同）——
+            # **这正是"从没在 Linux 上跑过"掩盖的那一类问题。**
+            #
+            # 路径是我们自己产出的、有精确含义的东西，不能让渲染层去折它。
+            console.print(
+                f"  [red]✗[/red] [bold]{_display_path(error.path)}[/bold]", soft_wrap=True
+            )
+            console.print(f"      [cyan]{error.field_path or '<root>'}[/cyan]", soft_wrap=True)
             console.print(f"      {error.message}")
         console.print()
         console.print("[dim]语料格式见 docs/RULES.md §1[/dim]")
@@ -1160,6 +1177,134 @@ def _parse_day(text: str | None) -> date:
     except ValueError:
         console.print(f"[red]日期格式不对：{text}（要 YYYY-MM-DD）[/red]")
         raise typer.Exit(code=2) from None
+
+
+@app.command("demo")
+def demo_cmd(
+    which: str = typer.Option("both", "--which", help="broken-agent / clean-agent / both"),
+    keep: Path | None = typer.Option(  # noqa: B008
+        None, "--keep", help="把 demo 仓库留在这个目录（不给就写临时目录，用完删）"
+    ),
+    profile: str = typer.Option("agent-enterprise", "--profile", "-p", help="场景档案"),
+) -> None:
+    """**离线 demo** —— 不配 API Key、不联网就能看到结果。
+
+    ## 为什么这个命令必须存在
+
+    「陌生人 5 分钟能跑通」的最低要求是：**他不需要先搞到一个 API key。**
+
+    而这个工具最有说服力的东西（14 条 agent 规则）恰好全都在确定性层 ——
+    零 LLM、零联网、零配置。所以 demo 就该让这一点直接可见。
+
+    ## 它演示什么
+
+    两份 agent，**同样的功能、两种写法**：
+
+    - ``broken-agent``：能跑、能查出点东西，而该有的保护一个都没有
+    - ``clean-agent``：差别不是"多了很多代码"，而是一处一处的 ``try`` /
+      ``Semaphore`` / 一句告诉模型"被截断了"的话
+
+    **agent 的可靠性不在算法里，在这些细节里。**
+    """
+    knowledge = _load()
+    chosen = knowledge.profiles.get(profile) or knowledge.profiles["agent-enterprise"]
+
+    names = ["broken-agent", "clean-agent"] if which == "both" else [which]
+    for name in names:
+        if name not in DEMOS:
+            console.print(f"[red]没有这个 demo：{name}[/red]")
+            console.print(f"[dim]可选：{', '.join(DEMOS)}[/dim]")
+            raise typer.Exit(code=2)
+
+    results: list[tuple[str, Path, Review]] = []
+    temporary: Path | None = None
+
+    try:
+        for name in names:
+            if keep is not None:
+                root = _write_demo(keep / name, demo_files(name))
+            else:
+                if temporary is None:
+                    temporary = Path(tempfile.mkdtemp(prefix="preflight-demo-"))
+                root = _write_demo(temporary / name, demo_files(name))
+
+            review = run_path(
+                root,
+                rules=knowledge.select(chosen.id),
+                profile_id=chosen.id,
+                fail_on=Severity.INFO,
+                knowledge_digest=knowledge.digest(),
+            )
+            results.append((name, root, review))
+
+        _render_demo(results, chosen.id, knowledge)
+
+    finally:
+        if temporary is not None:
+            shutil.rmtree(temporary, ignore_errors=True)
+
+
+def _write_demo(root: Path, files: dict[str, str]) -> Path:
+    """把 demo 素材写到磁盘上。
+
+    ⚠️ 显式 ``newline="\\n"`` —— 少了它，Windows 上写的 ``\\n`` 会变成
+    ``\\r\\n``，于是 demo 在 Windows 和 Linux 上**字节不同**。
+    而这个 demo 是给人看的对照物，两边不一样会让"同一份代码跑两次结果一样"
+    这句话在跨平台时失效。
+    """
+    for relative, content in files.items():
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8", newline="\n")
+    return root
+
+
+def _render_demo(
+    results: Sequence[tuple[str, Path, Review]], profile: str, knowledge: Knowledge
+) -> None:
+    """把两份 demo 的结果**并排**打出来 —— 那一眼就够看懂。"""
+    console.print()
+    console.print(f"[bold]preflight demo[/bold]　档案 {profile}　[dim]（零 LLM、零联网）[/dim]")
+    console.print()
+
+    for name, _root, review in results:
+        triggered = sorted({finding.rule_id for finding in review.findings})
+        agent_rules = [rule for rule in triggered if rule.startswith("agent/")]
+        mark = "🔴" if review.findings else "🟢"
+        note = ""
+        if review.verdict == "INCOMPLETE":
+            note = f"　[dim]（{len(review.skipped)} 条规则依赖外部工具，这台机器上没装）[/dim]"
+        console.print(
+            f"{mark} [bold]{name}[/bold]　{len(review.findings)} 条发现"
+            f"（agent 专项 {len(agent_rules)} 条）　判定 {review.verdict}{note}"
+        )
+
+    table = Table(header_style="bold")
+    table.add_column("规则", style="cyan", no_wrap=True)
+    table.add_column("broken-agent", justify="center")
+    table.add_column("clean-agent", justify="center")
+    table.add_column("为什么重要", style="dim")
+
+    fired: dict[str, set[str]] = {}
+    for name, _root, review in results:
+        for finding in review.findings:
+            fired.setdefault(finding.rule_id, set()).add(name)
+
+    for rule_id in sorted(fired, key=lambda item: (not item.startswith("agent/"), item)):
+        rule = knowledge.rules.get(rule_id)
+        table.add_row(
+            rule_id,
+            "❌" if "broken-agent" in fired[rule_id] else "—",
+            "❌" if "clean-agent" in fired[rule_id] else "—",
+            (rule.name if rule else "")[:40],
+        )
+    console.print(table)
+
+    console.print()
+    console.print("[dim]两份 demo 的文件结构完全相同 —— 差别只在几行保护代码上。[/dim]")
+    console.print("[dim]这就是 agent 可靠性的样子：不在算法里，在这些细节里。[/dim]")
+    console.print()
+    console.print("[dim]下一步：preflight run <你的项目> 看看你自己缺哪些。[/dim]")
 
 
 def main() -> None:

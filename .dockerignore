@@ -1,0 +1,21 @@
+# 构建镜像时**不需要**的东西。
+#
+# 为什么值得单独写：不写的话 `.venv/` 和 `.git/` 会一起进构建上下文 ——
+# 前者几百兆、后者带着全部历史，而它们对镜像内容毫无影响。
+# 在慢网络上这一条能省掉几分钟。
+
+.git
+.github
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+tests
+docs
+scripts
+*.egg-info
+dist
+build

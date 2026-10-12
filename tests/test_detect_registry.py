@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import ast
+import subprocess
 import sys
 from pathlib import Path
 
@@ -78,12 +79,42 @@ def test_importing_detect_does_not_pull_in_llm_sdks() -> None:
     """运行时的版本：import 完 detect 之后，那些模块不该出现在 sys.modules 里。
 
     这比扫源码更强 —— 它挡住"通过第三方库间接拉进来"的情况。
-    """
-    import preflight.detect
-    import preflight.detect.engine
-    import preflight.detect.registry  # noqa: F401
 
-    loaded = {name.split(".")[0] for name in sys.modules}
+    ## ⚠️ 必须在一个**全新解释器**里测
+
+    原来这个测试直接在当前进程里看 ``sys.modules`` —— 而那测的其实是
+    **整个测试套件的污染**，不是它声称的性质：
+
+    - 任何**别的**测试只要 import 过 ``httpx``（或任何间接拉进 ``socket``
+      的东西），``socket`` 就会一直留在 ``sys.modules`` 里，这条测试就红
+    - 而它红的时候，被测代码**根本没变**
+
+    实测：S8 加了 ``tests/test_release.py`` 之后它开始红，而单独跑
+
+        python -c "import preflight.detect; print('socket' in sys.modules)"
+        → False
+
+    **性质是成立的，是测试测错了对象。**
+
+    修法不是放宽断言（那是 D3 禁止的），是**让断言对准它声称的那件事** ——
+    在一个干净的解释器里问同一个问题。
+    """
+    probe = (
+        "import sys;"
+        "import preflight.detect, preflight.detect.engine, preflight.detect.registry;"
+        "loaded = {name.split('.')[0] for name in sys.modules};"
+        "print(','.join(sorted(loaded)))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        cwd=Path(__file__).resolve().parents[1],
+    )
+    assert result.returncode == 0, result.stderr
+
+    loaded = set(result.stdout.strip().split(","))
     leaked = sorted(loaded & set(FORBIDDEN_MODULES))
     assert not leaked, f"import preflight.detect 之后这些被拉进来了：{leaked}"
 
