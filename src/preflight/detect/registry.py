@@ -15,6 +15,18 @@ from __future__ import annotations
 
 from preflight.core.specs import CHECKERS
 from preflight.detect.adapters import ADAPTERS
+from preflight.detect.agent_checks import (
+    AgentLoopGuardChecker,
+    CostSourceChecker,
+    MissingCallKwargChecker,
+    ModelNameScatteredChecker,
+    OutputModelFieldsChecker,
+    PlainTextEndsSessionChecker,
+    ToolDispatchGuardChecker,
+    ToolOutputBudgetChecker,
+    UnboundedParallelToolsChecker,
+    UnvalidatedModelOutputChecker,
+)
 from preflight.detect.ast_checks import (
     SwallowedExceptionChecker,
     TestsHitNetworkChecker,
@@ -39,6 +51,17 @@ _IMPLEMENTATIONS: tuple[Checker, ...] = (
     UnpinnedDependencyChecker(),
     NoEvalFingerprintChecker(),
     TestLayersChecker(),
+    # agent 专项（S3）
+    MissingCallKwargChecker(),
+    ToolDispatchGuardChecker(),
+    UnvalidatedModelOutputChecker(),
+    UnboundedParallelToolsChecker(),
+    PlainTextEndsSessionChecker(),
+    AgentLoopGuardChecker(),
+    ToolOutputBudgetChecker(),
+    OutputModelFieldsChecker(),
+    ModelNameScatteredChecker(),
+    CostSourceChecker(),
     # 适配器（S2）：编排外部工具，不自己实现规则
     *ADAPTERS,
 )

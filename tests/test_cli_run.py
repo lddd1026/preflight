@@ -61,24 +61,28 @@ def test_run_on_dirty_repo_exits_one(dirty_repo: Path) -> None:
     assert "NO-GO" in result.stdout
 
 
-def test_run_with_unimplemented_checker_is_incomplete_but_exits_zero(
+def test_run_with_skipped_rules_is_incomplete_but_exits_zero(
     clean_repo: Path,
 ) -> None:
     """**这条是退出码口径的关键。**
 
-    ``agent/no-request-timeout`` 的检查器排在 S3。干净仓库 +
-    agent 档案 = 没有阻塞项、有一条没跑成 → ``INCOMPLETE``。
+    干净仓库 + agent 档案 = 没有阻塞项，但有几条规则没跑成
+    （3 条适配器规则依赖外部工具，机器上没装）→ ``INCOMPLETE``。
 
-    退出码必须是 **0**：工具自己没实现完，拿它拦住别人的 CI 是耍流氓。
-    但它绝不能渲染成 GO —— 那等于告诉用户"这个 agent 项目没有超时问题"，
-    而真相是我们没查。
+    退出码必须是 **0**：工具没装是用户的选择，拿它拦住别人的 CI 是耍流氓。
+    但它绝不能渲染成 GO —— 那等于告诉用户"这个项目没问题"，
+    而真相是有几条我们没查。
+
+    > S3 之前这条测的是"检查器还没实现"（``agent/no-request-timeout``）。
+    > S3 把它实现掉了，于是改成测"外部工具没装"这条路径 ——
+    > 两者都是"没查"，退出码口径是同一条。
     """
     result = runner.invoke(app, ["run", str(clean_repo), "-p", "agent-enterprise"])
 
     assert result.exit_code == 0, result.stdout
     assert "INCOMPLETE" in result.stdout
     assert "没有跑" in result.stdout
-    assert "agent/no-request-timeout" in result.stdout
+    assert "找不到工具" in result.stdout
 
 
 def test_run_fail_on_override_can_loosen_the_gate(dirty_repo: Path) -> None:

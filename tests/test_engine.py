@@ -100,13 +100,31 @@ def test_one_bad_rule_does_not_stop_the_others(
 
 # --------------------------------------------------------------------------
 # 跳过留痕
+#
+# ⚠️ 这里原来拿 `agent/no-request-timeout` 当"没实现"的例子 ——
+# 而 S3 把它的检查器实现掉了，于是那几条测试的前提没了。
+#
+# 现在改成**造一条指向不存在检查器的规则**。这样做反而更好：
+# 它测的是"跳过机制"本身，不依赖任何一条具体规则还没做完。
+# （另外还有一条测试专门断言：S3 之后**没有**未实现的检查器了。）
 # --------------------------------------------------------------------------
+
+
+def _rule_with_checker(rule_id: str, checker: str) -> Rule:
+    """把一条规则改成指向另一个检查器名。用来构造"跳过"的场景。"""
+    rule = _rule(rule_id)
+    return rule.model_copy(update={"detect": rule.detect.model_copy(update={"checker": checker})})
 
 
 def test_skipped_rules_are_marked_incomplete(tmp_path: Path) -> None:
     """有跳过项 → INCOMPLETE，**绝不是 GO**。"""
     root = write_knowledge(tmp_path / "p", {"app.py": "x = 1\n"})
-    review = _run("agent/no-request-timeout", root)
+    review = run_path(
+        root,
+        rules=[_rule_with_checker("agent/no-request-timeout", "not-a-real-checker")],
+        profile_id="t",
+        fail_on=Severity.HIGH,
+    )
 
     assert review.findings == []
     assert review.verdict == "INCOMPLETE"
@@ -118,7 +136,10 @@ def test_blocking_findings_win_over_incomplete(tmp_path: Path) -> None:
     root = write_knowledge(tmp_path / "p", {"app.py": "TOKEN = 'sk-abcdefghijklmnopqrstuvwx'\n"})
     review = run_path(
         root,
-        rules=[_rule("general/hardcoded-secret"), _rule("agent/no-request-timeout")],
+        rules=[
+            _rule("general/hardcoded-secret"),
+            _rule_with_checker("agent/no-request-timeout", "not-a-real-checker"),
+        ],
         profile_id="t",
         fail_on=Severity.HIGH,
     )
@@ -128,14 +149,54 @@ def test_blocking_findings_win_over_incomplete(tmp_path: Path) -> None:
     assert review.exit_code == 1
 
 
-def test_skipped_rule_reason_says_which_checker() -> None:
+def test_skipped_rule_reason_says_which_checker(tmp_path: Path) -> None:
+    root = write_knowledge(tmp_path / "p", {"app.py": "x = 1\n"})
     review = run_path(
-        Path("."),
-        rules=[_rule("agent/no-request-timeout")],
+        root,
+        rules=[_rule_with_checker("agent/no-request-timeout", "not-a-real-checker")],
         profile_id="t",
         fail_on=Severity.INFO,
     )
-    assert "missing-call-kwarg" in review.skipped[0].reason
+    assert "not-a-real-checker" in review.skipped[0].reason
+    assert "不存在" in review.skipped[0].reason
+
+
+def test_declared_but_unimplemented_reason_is_different() -> None:
+    """「检查器还没实现」和「检查器根本不存在」是**两种不同的原因**。
+
+    前者是"我们还没做"（会做），后者是"你写错名字了"（要做的是改配置）。
+    混成一句话，用户不知道该等还是该改。
+    """
+    from preflight.detect.engine import run_rules
+    from preflight.detect.repo import Repo
+
+    root = Path(".")
+    repo = Repo.scan(root)
+    rule = _rule("agent/no-request-timeout")
+
+    # 把实现表里的实现临时拿走，模拟"声明了但没实现"
+    import preflight.detect.registry as registry
+
+    saved = registry.IMPLEMENTED.pop("missing-call-kwarg")
+    try:
+        review = run_rules(repo, [rule], profile_id="t", fail_on=Severity.INFO)
+    finally:
+        registry.IMPLEMENTED["missing-call-kwarg"] = saved
+
+    assert "还没实现" in review.skipped[0].reason
+    assert "已登记" in review.skipped[0].reason
+
+
+def test_s3_leaves_no_declared_but_unimplemented_checker() -> None:
+    """**S3 的里程碑断言。**
+
+    这一阶段的目标是"14 条 agent 规则全部落地"。没有未实现的检查器，
+    就成了一个可检查的事实 —— 而不是靠人去翻文档。
+    """
+    from preflight.detect import registry
+
+    remaining = registry.declared_but_not_implemented()
+    assert remaining == frozenset(), f"还有检查器没实现：{sorted(remaining)}"
 
 
 # --------------------------------------------------------------------------

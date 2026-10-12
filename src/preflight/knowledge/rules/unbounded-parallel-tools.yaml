@@ -1,0 +1,31 @@
+id: agent/unbounded-parallel-tools
+name: 并行工具调用没有并发上限
+severity: medium
+applies_to: agent
+audience: both
+matrix:
+  mechanism: llm-call
+  invariant: no-overrun
+detect:
+  kind: ast
+  checker: unbounded-parallel-tools
+incident: |
+  一个响应里可能同时要求调好几个工具（模型挺喜欢这么干）。
+  用 `asyncio.gather` 并发跑本身没问题 —— **没有上限才有问题**。
+
+  一次并发几十个请求的后果不是"慢"，是**直接被限流**：
+  provider 返回 429，整轮失败；如果代码没重试，这次诊断就此结束。
+
+  而这笔钱已经花了 —— 失败的请求同样计费。
+
+  ⚠️ 误报场景：用了自定义的并发控制（线程池、外部限流器）时也会报。
+  这条是 medium，报出来是提示不是结论。
+report: |
+  第 {line} 行的 {call} 并发执行，但所在的函数里没看到并发上限。
+  → 一次并发几十个请求会被限流，整轮失败，而钱已经花了。
+fix: |
+  加一个信号量（`asyncio.Semaphore(5)`）或者分批执行。
+  上限取多少不重要，**有一个具体的数**才重要。
+refs:
+  - RULES.md §4
+stage: S3

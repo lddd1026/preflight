@@ -1,0 +1,43 @@
+id: agent/cost-from-price-table
+name: 成本从价格表推算，而不是读 provider 上报的数字
+severity: medium
+applies_to: agent
+audience: both
+matrix:
+  mechanism: llm-call
+  invariant: no-overrun
+detect:
+  # ⚠️ 第一版这一条用的是通用 text 检查器（一条正则），在 fivewhys 上误报 12 条：
+  #   ① cost_per_token 在那是"读价格用来显示"，不是记账
+  #   ② completion_cost() 在那只是**兜底**，前面已经读了 provider 上报的数字
+  # 所以改用具名 checker：**同一个文件里有正确写法就不报**。
+  kind: text
+  checker: cost-source
+  params:
+    pattern: 'completion_cost\s*\('
+    code_globs:
+      - '**/*.py'
+incident: |
+  **这是一个「看起来完全正确、但会静默归零」的模式。**
+
+  实测：请求 `deepseek/deepseek-chat`，而 DeepSeek 端返回的 model id 是
+  `deepseek-flash`。`completion_cost()` 拿**响应里的 model 名**去查价格表 →
+  查不到 → 抛 `This model isn't mapped yet` → 被 `except` 吞掉 →
+  **每一次调用都记 0。**
+
+  报表上「平均成本 $0.0000」看起来像不要钱，实际是根本没算。
+
+  而**这个 bug 离线测不出来**：假模型返回的 usage 同样算不出成本。
+  只有拿真 key 跑一次才会发现。
+
+  > **一个假得很好看的数字（$0.0000）比一个明显缺失的数字更危险。**
+report: |
+  第 {line} 行在用价格表推算成本（{match}）。
+  → provider 回的 model 名和请求的不一样时，查表会失败并**静默归零**。
+fix: |
+  优先读 provider **已经算好**的那个数：litellm 放在
+  `response._hidden_params["response_cost"]`，而且用的是请求时的别名。
+  查表只作兜底，最后才是 0 —— 顺序不能反。
+refs:
+  - 需求 NFR-2
+stage: S3

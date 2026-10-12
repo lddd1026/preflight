@@ -1,0 +1,41 @@
+id: agent/no-evidence-check
+name: 结论里的依据没人核对
+severity: medium
+applies_to: agent
+audience: both
+detect:
+  kind: ast
+  checker: output-model-fields
+  params:
+    aspect: evidence
+    model_hints:
+      - diagnosis
+      - output
+      - result
+      - report
+      - verdict
+      - conclusion
+incident: |
+  **agent 最危险的失败模式不是答错，是「答对了但过程全编造」。**
+
+  模型可以给你一份字段齐全、逻辑通顺、语言专业的报告，
+  而「依据」那一栏写的调用**从来没有发生过**。
+
+  为什么这比"我查不出来"更糟：判分只看根因对不对 ——
+  **编造的证据照样拿满分。** 于是你会相信一个没被验证过的推理，
+  并且把它当成"这个 agent 真的会推理"的证据。
+
+  编造的依据读起来和真的一模一样，**所以只能由机器来查**：
+  每条依据的 source 必须能对上**一次真实发生过的工具调用**。
+
+  ⚠️ 这一条的判定是启发式的：有依据字段 + 全仓库没有名字像"核对"的函数。
+  真实项目可能有别的核对方式（测试、外部校验），所以是 medium。
+report: |
+  {model} 有一个「依据 / 引用」字段，但整个仓库里没有任何核对它的地方。
+  → 模型可以给你一份依据全编造的报告，而判分只看结论对不对。
+fix: |
+  加一道机器校验：把结论里每条依据的 source 对回**真实发生过的工具调用**，
+  对不上就**打回去让模型自己改**（不是静默丢弃 —— 它需要知道错在哪）。
+refs:
+  - 需求 FR-8
+stage: S3

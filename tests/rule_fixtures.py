@@ -229,6 +229,307 @@ FIXTURES: dict[str, RuleFixture] = {
         clean_tool=FakeTool(version="ruff 0.17.0", output="[]"),
     ),
     # ------------------------------------------------------------------
+    # agent 专项规则（S3）
+    #
+    # 这 14 条的共同主题是**静默失效**：代码看起来正常工作，
+    # 而某个该有的保护根本不存在。所以正反例的差别都很小 ——
+    # 通常只是"多了一行"或"少了一行"。
+    # ------------------------------------------------------------------
+    "agent/no-request-timeout": RuleFixture(
+        delta="正例的模型调用没传 timeout；反例传了。",
+        dirty={
+            "agent.py": (
+                "import litellm\n\n\n"
+                "async def ask(messages):\n"
+                '    return await litellm.acompletion(model="m", messages=messages)\n'
+            )
+        },
+        clean={
+            "agent.py": (
+                "import litellm\n\n\n"
+                "async def ask(messages):\n"
+                "    return await litellm.acompletion(\n"
+                '        model="m", messages=messages, timeout=60\n    )\n'
+            )
+        },
+    ),
+    # ------------------------------------------------------------------
+    "agent/no-output-limit": RuleFixture(
+        delta="正例没传 max_tokens；反例传了。",
+        dirty={
+            "agent.py": (
+                "import litellm\n\n\n"
+                "async def ask(messages):\n"
+                '    return await litellm.acompletion(model="m", messages=messages)\n'
+            )
+        },
+        clean={
+            "agent.py": (
+                "import litellm\n\n\n"
+                "async def ask(messages):\n"
+                "    return await litellm.acompletion(\n"
+                '        model="m", messages=messages, max_tokens=2000\n    )\n'
+            )
+        },
+    ),
+    # ------------------------------------------------------------------
+    "agent/cost-from-price-table": RuleFixture(
+        delta="正例用 completion_cost 查价格表；反例读 provider 上报的数字。",
+        dirty={
+            "llm.py": (
+                "import litellm\n\n\n"
+                "def cost(response):\n"
+                "    return litellm.completion_cost(response)\n"
+            )
+        },
+        clean={
+            "llm.py": (
+                "def cost(response):\n"
+                '    """litellm 已经算好了 —— 而且用的是请求时的别名。"""\n'
+                '    hidden = getattr(response, "_hidden_params", None) or {}\n'
+                '    return hidden.get("response_cost") or 0.0\n'
+            )
+        },
+    ),
+    # ------------------------------------------------------------------
+    "agent/model-name-scattered": RuleFixture(
+        delta=(
+            "正例把模型名写在两个文件的**配置位置**上；反例只写一处。"
+            "注意不是「提到两次就报」—— 文档举例、测试参数化都不算，"
+            "否则这条规则会变成「你的文档不能提别的模型」。"
+        ),
+        dirty={
+            "config.py": 'MODEL = "gpt-4o-mini"\n',
+            "agent.py": 'FALLBACK_MODEL = "gpt-4o-mini"\n',
+        },
+        clean={"config.py": 'MODEL = "gpt-4o-mini"\n', "agent.py": "from config import MODEL\n"},
+    ),
+    # ------------------------------------------------------------------
+    "agent/tool-exception-uncaught": RuleFixture(
+        delta="正例直接分发工具；反例把分发包在 try 里。",
+        dirty={"loop.py": ("def run(call, tools):\n    return tools[call.name](**call.args)\n")},
+        clean={
+            "loop.py": (
+                "def run(call, tools):\n"
+                "    try:\n"
+                "        return tools[call.name](**call.args)\n"
+                "    except Exception as exc:\n"
+                "        return f'工具执行失败：{exc}'\n"
+            )
+        },
+    ),
+    # ------------------------------------------------------------------
+    "agent/unvalidated-model-output": RuleFixture(
+        delta="正例解析模型输出但没兜住；反例包在 try 里。",
+        dirty={
+            "loop.py": (
+                "import json\n\nimport litellm\n\n\n"
+                "async def run(messages):\n"
+                '    reply = await litellm.acompletion(model="m", messages=messages)\n'
+                "    return json.loads(reply.choices[0].message.content)\n"
+            )
+        },
+        clean={
+            "loop.py": (
+                "import json\n\nimport litellm\n\n\n"
+                "async def run(messages):\n"
+                '    reply = await litellm.acompletion(model="m", messages=messages)\n'
+                "    try:\n"
+                "        return json.loads(reply.choices[0].message.content)\n"
+                "    except json.JSONDecodeError as exc:\n"
+                "        return {'error': str(exc)}\n"
+            )
+        },
+    ),
+    # ------------------------------------------------------------------
+    "agent/unbounded-parallel-tools": RuleFixture(
+        delta="正例直接 gather 一批工具调用；反例有 Semaphore。",
+        dirty={
+            "loop.py": (
+                "import asyncio\n\n\n"
+                "async def run(calls):\n"
+                "    return await asyncio.gather(*[c() for c in calls])\n"
+            )
+        },
+        clean={
+            "loop.py": (
+                "import asyncio\n\n\n"
+                "async def run(calls):\n"
+                "    gate = asyncio.Semaphore(5)\n\n"
+                "    async def one(call):\n"
+                "        async with gate:\n"
+                "            return await call()\n\n"
+                "    return await asyncio.gather(*[one(c) for c in calls])\n"
+            )
+        },
+    ),
+    # ------------------------------------------------------------------
+    "agent/plain-text-ends-session": RuleFixture(
+        delta="正例把「没调工具」当成结束；反例改成推它一把。",
+        dirty={
+            "loop.py": (
+                "def step(reply):\n"
+                "    if not reply.tool_calls:\n"
+                "        return reply.content\n"
+                "    return None\n"
+            )
+        },
+        clean={
+            "loop.py": (
+                "NUDGE = '要么用工具继续查，要么调用 submit_diagnosis 交结论。'\n\n\n"
+                "def step(reply, messages):\n"
+                "    if not reply.tool_calls:\n"
+                "        messages.append({'role': 'user', 'content': NUDGE})\n"
+            )
+        },
+    ),
+    # ------------------------------------------------------------------
+    "agent/tool-output-unbounded": RuleFixture(
+        delta="正例把工具返回原样追加进消息，且整个文件没有任何截断手段；反例经过裁剪函数。",
+        dirty={
+            "loop.py": (
+                "def record(messages, result):\n"
+                "    messages.append({'role': 'tool', 'content': str(result)})\n"
+            )
+        },
+        clean={
+            "loop.py": (
+                "LIMIT = 2000\n\n\n"
+                "def _clip(text: str, limit: int) -> str:\n"
+                "    return text[:limit]\n\n\n"
+                "def record(messages, result):\n"
+                "    messages.append({'role': 'tool', 'content': _clip(str(result), LIMIT)})\n"
+            )
+        },
+    ),
+    # ------------------------------------------------------------------
+    "agent/no-context-guard": RuleFixture(
+        delta="正例的 agent 循环里没有上下文估算；反例有。",
+        dirty={
+            "loop.py": (
+                "import litellm\n\n\n"
+                "async def run(messages):\n"
+                "    for _step in range(10):\n"
+                '        reply = await litellm.acompletion(model="m", messages=messages)\n'
+                "        messages.append(reply)\n"
+                "    return messages\n"
+            )
+        },
+        clean={
+            "loop.py": (
+                "import litellm\n\n\n"
+                "def estimate_request_tokens(messages):\n"
+                "    return sum(len(str(m)) for m in messages) // 3\n\n\n"
+                "async def run(messages, context_limit=100000):\n"
+                "    for _step in range(10):\n"
+                "        if estimate_request_tokens(messages) > context_limit:\n"
+                "            break\n"
+                '        reply = await litellm.acompletion(model="m", messages=messages)\n'
+                "        messages.append(reply)\n"
+                "    return messages\n"
+            )
+        },
+    ),
+    # ------------------------------------------------------------------
+    "agent/no-budget-breaker": RuleFixture(
+        delta="正例的 agent 循环里不记账、不熔断；反例两条都有。",
+        dirty={
+            "loop.py": (
+                "import litellm\n\n\n"
+                "async def run(messages):\n"
+                "    for _turn in range(10):\n"
+                '        reply = await litellm.acompletion(model="m", messages=messages)\n'
+                "        messages.append(reply)\n"
+                "    return messages\n"
+            )
+        },
+        clean={
+            "loop.py": (
+                "import litellm\n\n\n"
+                "async def run(messages, max_total_tokens=200000):\n"
+                "    total_tokens = 0\n"
+                "    for _turn in range(10):\n"
+                '        reply = await litellm.acompletion(model="m", messages=messages)\n'
+                "        total_tokens += reply.usage.total_tokens\n"
+                "        if total_tokens > max_total_tokens:\n"
+                "            break\n"
+                "        messages.append(reply)\n"
+                "    return messages\n"
+            )
+        },
+    ),
+    # ------------------------------------------------------------------
+    "agent/truncation-without-notice": RuleFixture(
+        delta="正例只截断不说；反例在头部说明了件数。",
+        dirty={
+            "tools.py": (
+                "def truncate(text: str, limit: int = 2000) -> str:\n    return text[:limit]\n"
+            )
+        },
+        clean={
+            "tools.py": (
+                "def truncate(text: str, total: int, limit: int = 2000) -> str:\n"
+                '    head = f"（共 {total} 条，以下是前 {limit} 个字符）\\n"\n'
+                "    return head + text[:limit]\n"
+            )
+        },
+    ),
+    # ------------------------------------------------------------------
+    "agent/output-field-has-default": RuleFixture(
+        delta=(
+            "正例的字段带**真的默认值**（字符串、Field(None)）；"
+            "反例是三种**必填**写法：只有注解、Field(...)、Field(description=…)。"
+            "——注意反例必须把三种必填写法都写上："
+            "只写 Field(...) 的话，Field(description=…) 那条分支会一直没被测到，"
+            "而它曾经逻辑写反了（详见 has_default 的文档）。"
+        ),
+        dirty={
+            "models.py": (
+                "from pydantic import BaseModel, Field\n\n\n"
+                "class Diagnosis(BaseModel):\n"
+                '    root_cause: str = ""\n'
+                "    summary: str = Field(None)\n"
+                "    ruled_out: list[str] = Field(default_factory=list)\n"
+            )
+        },
+        clean={
+            "models.py": (
+                "from pydantic import BaseModel, Field\n\n\n"
+                "class Diagnosis(BaseModel):\n"
+                "    fault_category: str\n"
+                "    root_cause: str = Field(...)\n"
+                '    summary: str = Field(description="给值班工程师看的简短总结")\n'
+                '    evidence: list[str] = Field(description="支撑结论的证据")\n'
+            )
+        },
+    ),
+    # ------------------------------------------------------------------
+    "agent/no-evidence-check": RuleFixture(
+        delta="正例有依据字段但没有任何核对的代码；反例有 check_evidence 并被调用。",
+        dirty={
+            "models.py": (
+                "from pydantic import BaseModel\n\n\n"
+                "class Evidence(BaseModel):\n"
+                "    source: str\n\n\n"
+                "class Diagnosis(BaseModel):\n"
+                "    evidence: list[Evidence]\n"
+            )
+        },
+        clean={
+            "models.py": (
+                "from pydantic import BaseModel\n\n\n"
+                "class Evidence(BaseModel):\n"
+                "    source: str\n\n\n"
+                "class Diagnosis(BaseModel):\n"
+                "    evidence: list[Evidence]\n\n\n"
+                "def check_evidence(diagnosis, tool_calls):\n"
+                "    return all(e.source in tool_calls for e in diagnosis.evidence)\n\n\n"
+                "def accept(diagnosis, tool_calls):\n"
+                "    return check_evidence(diagnosis, tool_calls)\n"
+            )
+        },
+    ),
+    # ------------------------------------------------------------------
     "message-queue/no-loss-backlog-recovery": RuleFixture(
         delta="正例的测试里没有任何「积压恢复」的痕迹；反例提到了积压和死信。",
         dirty={"tests/test_producer.py": "def test_send():\n    assert True\n"},

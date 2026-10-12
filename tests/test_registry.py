@@ -37,12 +37,13 @@ def test_shipped_corpus_loads(shipped: Knowledge) -> None:
     （触发记录，这就是绊线该有的样子：
     S0 加 ``general/env-not-ignored`` → 4 条；
     S1 补齐 11 条通用规则 → 13 条；
-    S2 加 3 条适配器规则 → **16 条**。）
+    S2 加 3 条适配器规则 → 16 条；
+    S3 补齐 14 条 agent 规则 → **29 条**。）
     """
     assert shipped.counts == {
         "invariants": 6,
         "mechanisms": 3,
-        "rules": 16,
+        "rules": 29,
         "profiles": 3,
     }
 
@@ -65,8 +66,21 @@ def test_shipped_rules_are_the_expected_ones(shipped: Knowledge) -> None:
         "general/vulnerable-dependency",
         "general/leaked-secret",
         "general/static-defect",
-        # agent 专项 1 条（S3）
+        # agent 专项 14 条（S3）
         "agent/no-request-timeout",
+        "agent/no-output-limit",
+        "agent/cost-from-price-table",
+        "agent/model-name-scattered",
+        "agent/tool-exception-uncaught",
+        "agent/unvalidated-model-output",
+        "agent/unbounded-parallel-tools",
+        "agent/plain-text-ends-session",
+        "agent/tool-output-unbounded",
+        "agent/no-context-guard",
+        "agent/truncation-without-notice",
+        "agent/no-budget-breaker",
+        "agent/output-field-has-default",
+        "agent/no-evidence-check",
         # 矩阵规则 1 条（机制 × 不变量）
         "message-queue/no-loss-backlog-recovery",
     }
@@ -220,15 +234,25 @@ def test_matrix_view_marks_empty_cells(shipped: Knowledge) -> None:
     """**空格子 = 没人覆盖的风险区。**
 
     如果矩阵只列有规则的格子，你永远看不出"这个组合没人管"。
+
+    断言写成**性质**而不是具体数字：格子总数 = 机制 × 不变量，
+    而且覆盖与未覆盖必须加起来等于总数。具体覆盖了几格会随阶段变，
+    那是 `test_shipped_corpus_loads` 绊线的事。
     """
     cells = shipped.matrix_view()
-    covered = {cell for cell in cells if cell.covered}
+    assert len(cells) == len(shipped.mechanisms) * len(shipped.invariants)
 
-    assert len(covered) == 2, f"自带语料目前只该覆盖 2 格，实际 {len(covered)}"
-
+    covered = [cell for cell in cells if cell.covered]
     empty = [cell for cell in cells if not cell.covered]
-    assert len(empty) == 16
-    assert any(cell.mechanism == "message-queue" and cell.invariant == "no-leak" for cell in empty)
+
+    assert len(covered) + len(empty) == len(cells)
+    assert covered, "一格都没覆盖 —— 矩阵等于摆设"
+    assert empty, "一格空的都没有 —— 要么全做完了，要么矩阵算错了"
+
+    # 这两个格子是 S6 之前最该有人管、而现在还没人管的
+    assert any(
+        cell.mechanism == "message-queue" and cell.invariant == "no-leak" for cell in empty
+    ), "消息队列 × 不泄漏 目前还没有规则覆盖"
 
 
 def test_matrix_cell_lists_its_rules(shipped: Knowledge) -> None:

@@ -10,10 +10,19 @@ detect:
   kind: ast
   # 具名 checker：同一个 ast kind 底下，"找吞异常"和"找缺 kwargs 的调用"
   # 是两套完全不同的查询，写不出通用的那个。
+  #
+  # 这个 checker 同时服务 no-output-limit —— 两者形状完全一样，
+  # 差别只在要找哪个 kwarg。写两遍只会让两边慢慢分叉。
   checker: missing-call-kwarg
   params:
-    require_kwarg: timeout
-    # 去哪找调用点。封装层的误报由 S3 的 wrapper_entry 配置消除。
+    require_kwarg:
+      - timeout
+    # 去哪找调用点。**真实项目几乎都会把模型调用包一层** ——
+    # 那时候底下 SDK 那一次确实没传 timeout（参数在包装层传的），
+    # 直接报它就是误报。设 wrapper_entry 就会**只查**这些入口。
+    #
+    # wrapper_entry:
+    #   - myapp.llm.call_model
     symbols:
       - litellm.completion
       - litellm.acompletion

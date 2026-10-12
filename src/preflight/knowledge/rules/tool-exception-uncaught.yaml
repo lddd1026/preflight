@@ -1,0 +1,36 @@
+id: agent/tool-exception-uncaught
+name: 工具分发没有被兜住异常
+severity: high
+applies_to: agent
+audience: both
+matrix:
+  mechanism: llm-call
+  invariant: no-loss
+detect:
+  kind: ast
+  checker: tool-dispatch-guard
+incident: |
+  **工具名是模型生成的。** 它会编造一个听起来很合理的名字
+  （`query_traces`、`get_deployment_history`），于是 `tools[name]` 抛 `KeyError`。
+
+  如果没人兜住它，**整次会话崩掉** —— 这一轮所有的 token、所有的钱、
+  所有的调查进度全部作废。
+
+  而这本来可以变成一句给模型的反馈：
+
+  > 没有 `query_traces` 这个工具，你能用的是 query_metrics / query_logs / …
+
+  **错误是给它的新信息，不是终点。** 这正是 agent 和普通程序最不一样的地方。
+
+  ⚠️ 误报场景：分发可能包在**别的函数**里，那个函数有 try。
+  这里只查调用点的语法祖先，所以那种情况会报出来。
+  反过来说，分发点自己带 try 是更稳的写法 —— 报出来不算冤。
+report: |
+  第 {line} 行的工具分发没有被 try 兜住。
+  → 模型编造一个工具名就会让整次会话崩掉，而它本可以变成一句可读的反馈。
+fix: |
+  把分发点包进 try，异常时**把可用工具列出来**返回给模型。
+  注意返回的必须是一条消息，不是 None —— 沉默不等于反馈。
+refs:
+  - RULES.md §4
+stage: S3

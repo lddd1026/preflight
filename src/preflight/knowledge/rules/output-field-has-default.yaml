@@ -1,0 +1,43 @@
+id: agent/output-field-has-default
+name: 结构化输出模型的字段带默认值
+severity: high
+applies_to: agent
+audience: both
+detect:
+  kind: ast
+  checker: output-model-fields
+  params:
+    aspect: required
+    # 按名字猜是不可靠的。真实项目应该用 models 显式列出输出模型的类名 ——
+    # 这个默认值只是为了开箱能用。
+    model_hints:
+      - diagnosis
+      - output
+      - result
+      - report
+      - verdict
+      - conclusion
+incident: |
+  **带默认值的字段，不在 JSON Schema 的 `required` 里。**
+
+  于是模型可以整段省略它 —— 交上来的东西看起来"结构完整"，
+  实际少了好几个关键字段，而 Pydantic 不会报错（它有默认值）。
+
+  实测踩过：某次 `required` 只有 4 个字段，模型可以只交一句根因，
+  **「结构化输出」名存实亡**。而这个坑**不会报错** ——
+  只是偶尔交上来少几个字段，你得自己看出来。
+
+  ⚠️ 一个必须区分的写法：`Field(...)`（Ellipsis）**不算默认值** ——
+  那正是"必填"的写法。这条 checker 会把它排除掉。
+
+  > 另一种形态同样危险：字段声明成 `X | None = None`。
+  > 看起来是"可选"，实际是"模型可以不填，而下游要处理 None"。
+report: |
+  {model} 有 {count} 个字段带默认值：{fields}
+  → 带默认值的字段不在 JSON Schema 的 required 里，模型可以整段省略它。
+fix: |
+  去掉默认值（用 `Field(...)` 强制必填），或者把它在设计上真的当成可选 ——
+  两者选一个，别让"看起来必填、实际可以没有"这种状态存在。
+refs:
+  - 需求 FR-6
+stage: S3

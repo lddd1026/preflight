@@ -1,0 +1,40 @@
+id: agent/no-budget-breaker
+name: agent 循环里没有成本 / 用量熔断
+severity: high
+applies_to: agent
+audience: both
+matrix:
+  mechanism: llm-call
+  invariant: no-overrun
+detect:
+  kind: ast
+  checker: agent-loop-guard
+  params:
+    guard: budget
+incident: |
+  循环一旦停不下来，就是**持续花钱**。
+
+  为什么在成本上限之外还要一条按 token 的兜底 —— 因为：
+
+  **成本算不出来的时候，token 一定算得出来。**
+
+  实测踩过：`completion_cost()` 拿 provider 回的 model 名去查价格表，
+  查不到就抛异常，被 `except` 吞掉 → **每一次调用都记 0**。
+  于是成本上限永远不触发，而账单在涨。
+
+  而 token 是 provider **直接上报**的，不依赖价格表。
+
+  另一种常见形态是：只在调用**之后**检查累计值。那样一次超标的调用
+  （实测一个 8MB 回复记了 $0.84）已经花出去了 —— **闸门必须能拦住下一次**。
+
+  ⚠️ 误报场景同 no-context-guard：保护可能写在循环外面。
+report: |
+  第 {line} 行的循环里调用了模型，但循环体里没看到成本 / 用量熔断。
+  → 循环停不下来就是持续花钱；而成本可能因为查不到价格表而恒为 0。
+fix: |
+  两条都要：① 每次调用后紧贴记账（不要等循环结束统一算，
+  中间任何一次提前退出都会漏记）② 撞到上限时停，
+  并且写一句可读的说明（「累计 205,123 token，超过上限 200,000」）。
+refs:
+  - 需求 NFR-2
+stage: S3

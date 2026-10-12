@@ -117,7 +117,7 @@ runtime 被 core / understand 使用
 | **S0** | 地基与知识格式 | 3 天 | ✅ | |
 | **S1** | 确定性检测引擎 | 1 周 | ✅ | |
 | **S2** | 外部工具编排 | 4 天 | ✅ | |
-| **S3** | agent 专项规则 | 1 周 | ⬜ | 🏁 **v0.1 可发布** |
+| **S3** | agent 专项规则 | 1 周 | ✅ | 🏁 **v0.1 可发布** |
 | **S4** | 文档发现 + 声明抽取 | 1.5 周 | ⬜ | |
 | **S5** | 证据核对 + 防幻觉 + 报告 | 1.5 周 | ⬜ | 🏁 **v0.2 可发布** |
 | **S6** | 机制探测 + 矩阵推导 | 1 周 | ⬜ | |
@@ -229,32 +229,47 @@ runtime 被 core / understand 使用
 
 ---
 
-### S3 · agent 专项规则（1 周）　🏁 **v0.1 可发布**
+### S3 · agent 专项规则（1 周）　🏁 **v0.1 可发布**　✅ 已完成
 
-**🎯 目标**：12 条 agent 规则全部实现，并且**在真实的 agent 项目上验证过**。
+> 实际结果见 [PROGRESS.md](PROGRESS.md) 的 S3 章节。
+>
+> **⚠️ 数量口径更正**：下面写的是「12 条」，那是把已经建好的
+> `general/unbounded-loop`（排在 S1）也算进来了。**真实是 14 条** ——
+> 以 [RULES.md](RULES.md) 的规则表为准，由
+> `test_agent_rule_count_matches_the_docs` 钉住。
+>
+> **主要偏差**：新增 `detect/agent_analysis.py` 分析内核（14 条里 12 条在问
+> 同一个问题）；9 个 checker 服务 14 条规则；`cost-from-price-table`
+> 从通用 text 改成具名 checker。
+>
+> **双跑对比的实际结果**：故意写坏的那个仓库 **15 条发现、14/14 条规则全部命中**；
+> 写得规矩的那个和真实 `fivewhys` 都是 **0 条**。
+> 而第一次拿真实项目跑时误报了 **67 条** —— 那 67 条在夹具上一条都看不到。
+
+**🎯 目标**：14 条 agent 规则全部实现，并且**在真实的 agent 项目上验证过**。
 
 **📦 交付物**
 
 | 编号 | 任务 | 规则 |
 | --- | --- | --- |
-| PF-16 | A 组：模型调用 | `no-request-timeout`、`no-output-limit`、`cost-from-price-table` |
-| PF-17 | B 组：循环 | `unbounded-loop`、`tool-exception-uncaught`、`unvalidated-model-output` |
+| PF-16 | A 组：模型调用 | `no-request-timeout`、`no-output-limit`、`cost-from-price-table`、`model-name-scattered` |
+| PF-17 | B 组：循环 | `tool-exception-uncaught`、`unvalidated-model-output`、`unbounded-parallel-tools`、`plain-text-ends-session` |
 | PF-18 | C 组：上下文 | `tool-output-unbounded`、`no-context-guard`、`truncation-without-notice` |
 | PF-19 | D 组：护栏与输出 | `no-budget-breaker`、`output-field-has-default`、`no-evidence-check` |
-| PF-20 | **包装层识别**：配置声明 LLM 调用入口，消除包装层误报 | `--llm-entry` 配置 + 忽略机制 |
-| PF-21 | 忽略机制：`# preflight: ignore <rule>` + 配置文件排除 | 有测试 |
+| PF-20 | **包装层识别**：声明 LLM 调用入口，消除包装层误报 | `wrapper_entry`（**替换**语义） |
+| PF-21 | 忽略机制：`# preflight: ignore <rule>` + 配置文件排除 | S1 已提前完成 |
 
 **🧪 阶段测试（本阶段最关键）**
 
-1. 每条规则：脏 fixture 报出来 + 干净 fixture 不报（12 × 2 = 24 个 fixture）
+1. 每条规则：脏 fixture 报出来 + 干净 fixture 不报（14 × 2 = 28 个用例）
 2. **双跑对比验证** —— 这是本阶段的核心验收：
 
-   | 仓库 | 期望 |
-   | --- | --- |
-   | `fivewhys`（作者自己的项目，逐条踩过坑） | **全过**（或仅有明确的 info 级提示） |
-   | `broken-agent-demo`（故意写坏的 agent） | **报出全部 12 条** |
+   | 仓库 | 期望 | 实际 |
+   | --- | --- | --- |
+   | `fivewhys`（作者自己的项目，逐条踩过坑） | **全过** | ✅ 0 条 |
+   | `broken-agent-demo`（故意写坏的 agent） | **报出全部 14 条** | ✅ 14/14 |
 
-3. **包装层误报测试**：一个把参数传在 wrapper 里的项目，配了 `--llm-entry` 后应零误报
+3. **包装层误报测试**：一个把参数传在 wrapper 里的项目，配了 `wrapper_entry` 后应零误报
 4. 忽略机制：加了 ignore 注释后该条消失，其他条不受影响
 
 **✅ 退出标准**：双跑对比通过。**这个对比就是 README 的第一屏。**
@@ -440,7 +455,7 @@ runtime 被 core / understand 使用
 | S0 全部 | — |
 | S1 全部 | — |
 | S2 全部 | — |
-| S3 全部（12 条 agent 规则 + 双跑验证） | — |
+| S3 全部（14 条 agent 规则 + 双跑验证） | — |
 | 终端 + Markdown 报告 | 不做 HTML 报告 |
 | 忽略机制 | 不做配置文件继承 |
 

@@ -308,20 +308,152 @@ _SPECS: tuple[CheckerSpec, ...] = (
             ),
         ),
     ),
-    # ---- 已登记、但排在后面阶段实现 ----
+    # ---- agent 专项检查器（S3）----
     CheckerSpec(
         name="missing-call-kwarg",
         kind=DetectKind.AST,
         summary="对某个已知 API 的调用缺了必需的 kwargs（如 timeout / max_tokens）",
-        implemented=False,
+        implemented=True,
         params=ParamSpec(
-            required=("symbols", "require_kwarg"),
-            optional=("wrapper_entry",),
+            required=("require_kwarg",),
+            optional=("symbols", "wrapper_entry"),
             note=(
-                "**S3 实现。** 这条 checker 会被两条规则复用："
-                "``agent/no-request-timeout``（timeout）和 "
-                "``agent/no-output-limit``（max_tokens）—— 所以它做成带参数的，"
-                "而不是两条各写一遍。"
+                "同一个 checker 服务两条规则：``agent/no-request-timeout``（timeout）\n"
+                "和 ``agent/no-output-limit``（max_tokens）—— 它们形状完全一样，\n"
+                "写两遍只会让两边慢慢分叉。\n"
+                "``wrapper_entry`` 的语义是**替换**而不是追加：真实项目几乎都会把\n"
+                "模型调用包一层，那时底下 SDK 那一次确实没传 kwargs（参数在包装层传的），\n"
+                "直接报它就是误报。设了 wrapper_entry 就只查这些入口。"
+            ),
+        ),
+    ),
+    CheckerSpec(
+        name="tool-dispatch-guard",
+        kind=DetectKind.AST,
+        summary="工具分发没有被 try 兜住",
+        implemented=True,
+        params=ParamSpec(
+            optional=("dispatch_hints",),
+            note=(
+                "工具名是**模型生成的**，它会编造一个听起来合理的名字，\n"
+                "于是 ``tools[name]`` 抛 KeyError 而整次会话崩掉。\n"
+                "误报：分发可能包在别的函数里（那个函数有 try），这里只查语法祖先。"
+            ),
+        ),
+    ),
+    CheckerSpec(
+        name="unvalidated-model-output",
+        kind=DetectKind.AST,
+        summary="模型的输出没校验就用了",
+        implemented=True,
+        params=ParamSpec(
+            optional=("parse_functions", "symbols"),
+            note=(
+                "只报**同一个函数里也有模型调用**的那些解析 —— 不加这个条件，\n"
+                "读配置、读请求体的 json.loads 全会中招，而那些地方出错是正常的\n"
+                "（数据来自可信来源）。模型输出不一样：**非法 JSON 是常态**。"
+            ),
+        ),
+    ),
+    CheckerSpec(
+        name="unbounded-parallel-tools",
+        kind=DetectKind.AST,
+        summary="并行工具调用没有并发上限",
+        implemented=True,
+        params=ParamSpec(
+            optional=("gather_functions", "throttle_hints"),
+            note="误报：用了自定义并发控制（线程池 / 外部限流器）时也会报。",
+        ),
+    ),
+    CheckerSpec(
+        name="plain-text-ends-session",
+        kind=DetectKind.AST,
+        summary="「模型没调工具」被直接当成了结束",
+        implemented=True,
+        params=ParamSpec(
+            optional=(),
+            note=(
+                "模型经常先嘀咕一句「我先看看日志」—— 那只是思考不是结论。\n"
+                "把它当结束，这次诊断白跑，还会被记进准确率分母。"
+            ),
+        ),
+    ),
+    CheckerSpec(
+        name="agent-loop-guard",
+        kind=DetectKind.AST,
+        summary="agent 循环里缺了某项保护（上下文闸门 / 成本熔断）",
+        implemented=True,
+        params=ParamSpec(
+            required=("guard",),
+            optional=("symbols", "guard_hints"),
+            note=(
+                "``guard: context`` → ``agent/no-context-guard``；\n"
+                "``guard: budget`` → ``agent/no-budget-breaker``。\n"
+                "「agent 循环」= **循环体里含模型调用的循环** —— 不含的就不是 agent 循环。\n"
+                "误报：保护可能写在循环外面（初始化时设一次）。但**闸门写在循环里\n"
+                "才是最稳的写法** —— 放外面时谁改动了初始化顺序就会悄悄失效。"
+            ),
+        ),
+    ),
+    CheckerSpec(
+        name="tool-output-budget",
+        kind=DetectKind.AST,
+        summary="工具返回进上下文时的预算问题（没限长 / 截断不告诉模型）",
+        implemented=True,
+        params=ParamSpec(
+            required=("aspect",),
+            optional=("append_methods", "budget_hints", "function_hints", "notice_hints"),
+            note=(
+                "``aspect: append`` → ``agent/tool-output-unbounded``；\n"
+                "``aspect: truncation`` → ``agent/truncation-without-notice``。\n"
+                "append 用**文件级**判断（这个文件里有没有任何截断手段）—— 精确到行\n"
+                "需要数据流分析，不值得做。代价是可能误报，但比漏报强：\n"
+                "漏报的后果是成本平方级增长，而且没有信号。"
+            ),
+        ),
+    ),
+    CheckerSpec(
+        name="output-model-fields",
+        kind=DetectKind.AST,
+        summary="结构化输出模型的字段约束（有默认值 / 依据没人核对）",
+        implemented=True,
+        params=ParamSpec(
+            required=("aspect",),
+            optional=("models", "model_hints", "evidence_fields", "check_hints"),
+            note=(
+                "``aspect: required`` → ``agent/output-field-has-default``；\n"
+                "``aspect: evidence`` → ``agent/no-evidence-check``。\n"
+                "带默认值的字段**不在 JSON Schema 的 required 里**，模型可以整段省略。\n"
+                "``Field(...)``（Ellipsis）不算默认值 —— 那正是「必填」的写法。\n"
+                "用 ``models`` 显式列出输出模型的类名比按名字猜可靠得多。"
+            ),
+        ),
+    ),
+    CheckerSpec(
+        name="cost-source",
+        kind=DetectKind.TEXT,
+        summary="成本是从价格表推算的，而不是读 provider 上报的数字",
+        implemented=True,
+        params=ParamSpec(
+            optional=("pattern", "preferred_hints", "code_globs"),
+            note=(
+                "**同一个文件里出现过正确写法就不报** —— 正确的实现是\n"
+                "「先读 provider 上报的 response_cost，读不到再查表」，\n"
+                "那种代码里两个都会出现，而它是对的。\n"
+                "实测：只按模式匹配会在一个写得很规矩的真实项目上误报 12 条。"
+            ),
+        ),
+    ),
+    CheckerSpec(
+        name="model-name-scattered",
+        kind=DetectKind.TEXT,
+        summary="模型名散落在多个文件里",
+        implemented=True,
+        params=ParamSpec(
+            optional=("pattern", "min_files", "code_globs"),
+            note=(
+                "换模型时漏改一处，评测数字就不可比了，\n"
+                "而且「所有指标必须标注所用模型」这条约束会直接失效。"
             ),
         ),
     ),

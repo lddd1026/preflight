@@ -1,0 +1,40 @@
+id: agent/no-context-guard
+name: agent 循环里没有上下文闸门
+severity: high
+applies_to: agent
+audience: both
+matrix:
+  mechanism: llm-call
+  invariant: no-overrun
+detect:
+  kind: ast
+  checker: agent-loop-guard
+  params:
+    guard: context
+incident: |
+  每走一步，工具返回就被追加进历史 —— **prompt 会自己长大**。
+
+  没有闸门的后果分两种，都很难受：
+
+  ① **等 provider 报「上下文超限」** —— 那时这一次调用的钱已经花了、
+     时间已经耗了，而你得到的是一个没有任何信息量的错误
+  ② **换模型时闸门写死了** —— 实测窗口差 8 倍以上
+     （deepseek-chat 131,072 / gpt-4o-mini 128,000 / gemini-2.0-flash 1,048,576）。
+     写死 60k 会让 gemini 在**只用了 5.7% 窗口**时停下，
+     还附一句不成立的解释（「历史被工具返回撑满了」）。
+
+  所以正确做法是**发出去之前估算**，而且闸门要按**该模型自己的窗口**算。
+
+  ⚠️ 误报场景：保护可能写在循环外面（客户端初始化时设一次），
+  或者通过装饰器提供。这里只查循环体。
+  但报出来不算冤：**闸门写在循环里才是最稳的写法** ——
+  放外面时，谁改动了初始化顺序就会悄悄失效，而那时没有任何信号。
+report: |
+  第 {line} 行的循环里调用了模型，但循环体里没看到上下文闸门。
+  → 等 provider 回「上下文超限」时，那一次的钱已经花了。
+fix: |
+  在**发出去之前**估算请求大小，超了就提前停止并写清原因；
+  闸门按该模型自己的窗口算（记一个比例，不要写死数字）。
+refs:
+  - 需求 NFR-12
+stage: S3

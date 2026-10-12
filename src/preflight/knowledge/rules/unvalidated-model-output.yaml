@@ -1,0 +1,42 @@
+id: agent/unvalidated-model-output
+name: 模型的输出没校验就用了
+severity: high
+applies_to: agent
+audience: both
+matrix:
+  mechanism: llm-call
+  invariant: no-loss
+detect:
+  kind: ast
+  checker: unvalidated-model-output
+  params:
+    # 只报**同一个函数里也有模型调用**的那些解析。
+    # 不加这个条件，读配置、读请求体的 json.loads 全会中招 ——
+    # 而那些地方出错会崩是**正常的**（数据来自可信来源）。
+    parse_functions:
+      - json.loads
+      - loads
+      - model_validate_json
+incident: |
+  **模型返回非法 JSON 是常态，不是异常。**
+
+  它是一个概率生成器，格式坏掉不需要任何理由：少半个括号、多一句解释、
+  把 JSON 包在 markdown 代码块里。
+
+  没兜住的后果是整次会话崩掉 —— 而**模型本来完全可以自己改**，
+  只要把具体的错误告诉它：
+
+  > 你的 JSON 第 3 行少了一个引号，请重新提交。
+
+  ⚠️ 误报场景：模型输出在函数 A 解析、在函数 B 调用 → 会**漏报**
+  （不是误报）。漏报的代价比误报大，所以条件已经放宽到"同一文件同函数"。
+report: |
+  第 {line} 行的 {function} 解析的是模型输出，但没有被 try 兜住、
+  也没看到 schema 校验。
+  → 非法 JSON 是常态；未兜底的话整次会话崩，而模型本来可以自己改。
+fix: |
+  两层都要：① try 住解析失败 ② 用 schema 校验**字段**（Pydantic / jsonschema）。
+  失败时把**具体错误**喂回去让它重来 —— 只说「格式不对」它改不了。
+refs:
+  - RULES.md §4
+stage: S3

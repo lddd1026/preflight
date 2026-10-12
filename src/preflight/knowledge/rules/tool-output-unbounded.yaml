@@ -1,0 +1,34 @@
+id: agent/tool-output-unbounded
+name: 工具返回直接进上下文，没有长度限制
+severity: high
+applies_to: agent
+audience: both
+matrix:
+  mechanism: llm-call
+  invariant: no-overrun
+detect:
+  kind: ast
+  checker: tool-output-budget
+  params:
+    aspect: append
+incident: |
+  一份 8MB 的工具返回，会被**原样加进历史，然后之后每一次请求都再发一遍**。
+
+  所以成本不是"多了一点"，是**平方级增长**：第 N 轮的请求里带着前面
+  N-1 轮的全部工具返回。
+
+  而这件事在开发机上永远看不出来 —— 你造的假数据只有几十行。
+  只有在真实项目上第一次查一个大日志的时候才会发生，而那时账单已经在涨了。
+
+  ⚠️ 判定用**文件级**（这个文件里有没有任何截断手段）：精确到行需要数据流
+  分析，不值得做。代价是可能误报（截断写在别的模块里），
+  但比漏报强 —— 漏报的后果是成本平方级增长，而且没有信号。
+report: |
+  第 {line} 行把内容追加进消息列表，而这个文件里没有任何截断 / 渲染手段。
+  → 一份大返回会被原样加进历史，之后每一次请求都再发一遍。
+fix: |
+  在工具层渲染：截断到预算内，**并且在头部说明「共命中 M 条，显示前 K 条」**。
+  截断可以，但不能悄悄截断（见 agent/truncation-without-notice）。
+refs:
+  - 需求 NFR-11
+stage: S3

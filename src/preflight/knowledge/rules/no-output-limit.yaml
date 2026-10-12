@@ -1,0 +1,36 @@
+id: agent/no-output-limit
+name: 模型调用的输出长度没有限制
+severity: high
+applies_to: agent
+audience: both
+matrix:
+  mechanism: llm-call
+  invariant: no-overrun
+detect:
+  kind: ast
+  # 和 no-request-timeout 共用同一个 checker —— 形状完全一样，
+  # 只是要找的 kwarg 不同。
+  checker: missing-call-kwarg
+  params:
+    # 三个名字都算：不同 SDK 叫法不同
+    require_kwarg:
+      - max_tokens
+      - max_output_tokens
+      - max_completion_tokens
+incident: |
+  **这是我们唯一能主动设的成本上限** —— 不设它，输出长度完全由 provider 决定。
+
+  实测：一个 8MB 的回复让**单次调用**记账 **$0.84**，是单次硬上限（$0.10）的
+  8 倍。而成本闸门是在调用**之后**才检查的 —— **它拦不住这一刀。**
+
+  2000 token 的依据：一次诊断的输出（含完整的 9 字段结论）实测约 600~900 token，
+  留一倍余量；2000 token 输出成本约 $0.0008，乘以 20 步仍远低于硬上限。
+report: |
+  第 {line} 行的模型调用没有限制最大输出。
+  → 输出长度完全由 provider 决定，而成本闸门在**调用之后**才检查，拦不住。
+fix: |
+  给调用加上 max_tokens=2000（按你实际输出的长度留一倍余量），
+  并且在**响应侧**再加一道大小兜底 —— provider 未必尊重这个参数。
+refs:
+  - 需求 NFR-2
+stage: S3

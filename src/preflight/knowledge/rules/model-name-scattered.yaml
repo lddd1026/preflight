@@ -1,0 +1,33 @@
+id: agent/model-name-scattered
+name: 模型名散落在多个文件里
+severity: medium
+applies_to: agent
+audience: both
+detect:
+  kind: text
+  checker: model-name-scattered
+  params:
+    # 阈值是 ≥2 个**文件**而不是 ≥2 处 ——
+    # 同一个文件里写两遍是小事，跨文件才是"换模型时会漏改"的那种。
+    min_files: 2
+    code_globs:
+      - '**/*.py'
+incident: |
+  两个后果，第二个更隐蔽：
+
+  ① **换模型时漏改一处** —— 你以为换了，实际还有一条路径在用旧模型。
+  ② **「所有对外展示的数字必须标注所用模型」这条约束会直接失效。**
+     报告上写着一个模型名，而实际跑的可能是另一个。
+
+  实测的形态更阴：请求 `deepseek/deepseek-chat`，而 provider 回的是
+  `deepseek-flash` —— 所以**光看代码里的字面量都不够**，
+  还得记下实际服务的那一个（见 `served_model`）。
+report: |
+  模型名 {name} 出现在 {count} 个文件里：{files}
+  → 换模型时漏改一处，评测数字就不可比了。
+fix: |
+  收口到一处配置（一个模块常量或一个环境变量），其余地方只引用它。
+  顺手把「实际服务的模型名」也记下来 —— 那是两回事。
+refs:
+  - 约束 C-7
+stage: S3
