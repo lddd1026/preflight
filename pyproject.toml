@@ -56,6 +56,17 @@ tools = [
     "ruff>=0.6,<1",  # 静态缺陷那条也需要它；dev 里也有一份，装 tools 单独跑时要有
 ]
 
+# 文档理解层（S4）也**是可选的**，而且理由更硬。
+#
+# preflight 的核心承诺是"确定性层零 LLM、零依赖"。把 litellm 变成必装依赖，
+# 等于让只想跑确定性检查的人装一个几十兆的模型网关 —— 那和这个项目的定位矛盾。
+#
+# 没装时 `preflight run` / `list-rules` / `docs` 全都正常，
+# 只有 `preflight claims` 会明确报"要装 [llm]"。
+llm = [
+    "litellm>=1.50,<2",
+]
+
 [project.scripts]
 preflight = "preflight.cli:main"
 
@@ -117,6 +128,15 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 disallow_untyped_defs = true
 no_implicit_optional = true
+
+# litellm 是**可选依赖**（`[llm]` extra），typing 也不完整。
+#
+# 为什么用 override 而不是把它塞进 dev 依赖：那会让**每一个**贡献者
+# 为了跑 `ruff check` 都要装一个几十兆的模型网关。而这里要的只是
+# "让 mypy 知道这个 import 是有意为之"，`ignore_missing_imports` 正好。
+[[tool.mypy.overrides]]
+module = ["litellm", "litellm.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

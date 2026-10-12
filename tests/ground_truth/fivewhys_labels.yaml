@@ -1,0 +1,264 @@
+# 声明抽取的**人工基准** —— fivewhys 文档，逐条核对的结果
+#
+# ## 这份文件为什么存在
+#
+# PLAN 里 S4 的唯一交付物是**准确率**。而"这句话算不算一条承诺"没有
+# 确定性算法 —— 只能由人判定。
+#
+# 所以流程是：**机器抽 → 落盘 → 人逐条标 → 再算数字**。
+# 这份文件就是中间那一步的留痕：数字可疑时可以回来看"人到底怎么判的"。
+#
+# ## 怎么用
+#
+# `scripts/check_claims_accuracy.py <claims.json>` 会拿它来比对。
+# 匹配键是 **文档路径 + 行号**（不是引用文本 —— 文本可能被宽松匹配）。
+#
+# ## 抽样方法（必须写清，否则数字没有意义）
+#
+# - **plan 类文档（ROADMAP / TASKS）全量**：那是"计划被当成承诺"的重灾区
+# - 其余文档**每 4 条取 1 条**
+# - 合计 114 条，占当时全部承诺（246 条）的 46%
+#
+# 为什么不全量：全量是 246 条，逐条核对的时间成本不成比例，
+# 而分层抽样已经覆盖了最容易错的那一类。**这是抽样，不是全量 ——
+# 报告数字时必须一起说出来。**
+
+version: 1
+target: fivewhys
+sampled_from: 246
+sample_size: 114
+sampling: "plan 类文档全量 + 其余每 4 条取 1 条"
+
+# ----------------------------------------------------------------------
+# 判错的那些：文档:行号 → 错误类别
+#
+# 类别用的是 SYSTEM_PROMPT 里那张排除表 —— 这样"模型没遵守哪一条"
+# 就是一个可以统计的东西，而不是一堆零散的抱怨。
+# ----------------------------------------------------------------------
+wrong:
+  ".github/PULL_REQUEST_TEMPLATE.md:16":
+    category: checklist
+    why: "清单勾选项（进度记录），不是对系统的断言"
+
+  "README.md:245":
+    category: process
+    why: "「需求变了，往下三层都要跟着改」是对人的流程要求，打开仓库验证不了"
+
+  "docs/DESIGN.md:34":
+    category: option
+    why: "「代码量小，约 150 行」说的是**候选方案 A**，不是当前系统"
+
+  "docs/DESIGN.md:61":
+    category: option
+    why: "「可复现性天然满足」同样是对候选方案的评价"
+
+  "docs/DESIGN.md:153":
+    category: meta
+    why: "「这是需求里唯一的正式实验，也是面试时最值得讲的一段」是元评论"
+
+  "docs/REQUIREMENTS.md:694":
+    category: proposal
+    why: "「修法：改名字，并加一条机器检查」是提案，不是现状"
+
+  "docs/REQUIREMENTS.md:828":
+    category: process
+    why: "「变更规则：需求变更必须改本文档」是对人的要求"
+
+  "docs/ROADMAP.md:7":
+    category: self_description
+    why: "「本文档把需求拆成 9 个目标」在描述文档自己"
+
+  "docs/ROADMAP.md:25":
+    category: table_fragment
+    why: "「合计 ≈26.5d」是表格的汇总行，不是一句断言"
+
+  "docs/ROADMAP.md:77":
+    category: plan
+    why: "「验收：跑 5 次，至少 3 次给出正确根因」是一条**验收标准**（将来判定用），不是现状"
+
+  "docs/ROADMAP.md:339":
+    category: plan
+    why: "「关键路径：M1 → M2 → …」描述的是计划的结构"
+
+  "docs/TASKS.md:10":
+    category: process
+    why: "「一次只允许一个任务处于 [~]」是对人的流程规则"
+
+  "docs/TASKS.md:474":
+    category: plan
+    why: "「M1 的验收标准是一条数字…」是验收标准，不是现状"
+
+  "docs/TASKS.md:486":
+    category: instruction
+    why: "「在 .env 里配好 DEEPSEEK_API_KEY，跑：」是给读者的操作指令"
+
+  "docs/TASKS.md:513":
+    category: question
+    why: "「这张表里的成本数字，是我抄的还是我编的？」是一个问题"
+
+  "docs/TASKS.md:534":
+    category: instruction
+    why: "「读 scenarios.py 头部注释」是给读者的指令"
+
+  "docs/TASKS.md:555":
+    category: instruction
+    why: "「用 service.emit(...) 写日志」是编码指令"
+
+  "docs/TASKS.md:556":
+    category: instruction
+    why: "「用 service._rng 取随机数」是编码约定，对象是人"
+
+  "docs/WORKFLOW.md:3":
+    category: process
+    why: "「每个任务都走这 7 步」是工作流程"
+
+  "docs/WORKFLOW.md:33":
+    category: process
+    why: "分支命名规范表格行"
+
+  "docs/WORKFLOW.md:60":
+    category: checklist
+    why: "「- [ ] pytest 全绿」是清单勾选项"
+
+  "docs/WORKFLOW.md:76":
+    category: process
+    why: "提交类型约定表格行"
+
+  "docs/WORKFLOW.md:94":
+    category: instruction
+    why: "「对着 PR 模板逐条检查」是给读者的指令"
+
+# ----------------------------------------------------------------------
+# **判定过哪些**（不只是判错哪些）
+#
+# 测量脚本靠这个区分「判过但判对」和「根本没判过」。少了它，
+# 样本一变就会有没判过的条目混进分母 —— 而那个数字是假的，
+# 且看不出来。
+# ----------------------------------------------------------------------
+judged_keys:
+  - ".github/PULL_REQUEST_TEMPLATE.md:16"
+  - "README.md:30"
+  - "README.md:73"
+  - "README.md:104"
+  - "README.md:109"
+  - "README.md:155"
+  - "README.md:199"
+  - "README.md:254"
+  - "README.md:245"
+  - "docs/DESIGN.md:34"
+  - "docs/DESIGN.md:61"
+  - "docs/DESIGN.md:114"
+  - "docs/DESIGN.md:153"
+  - "docs/DEV.md:5"
+  - "docs/DEV.md:88"
+  - "docs/DEV.md:130"
+  - "docs/DEV.md:183"
+  - "docs/DEV.md:260"
+  - "docs/DEV.md:315"
+  - "docs/RELEASE_REVIEW.md:47"
+  - "docs/RELEASE_REVIEW.md:51"
+  - "docs/RELEASE_REVIEW.md:72"
+  - "docs/RELEASE_REVIEW.md:96"
+  - "docs/RELEASE_REVIEW.md:106"
+  - "docs/RELEASE_REVIEW.md:168"
+  - "docs/REQUIREMENTS.md:105"
+  - "docs/REQUIREMENTS.md:129"
+  - "docs/REQUIREMENTS.md:143"
+  - "docs/REQUIREMENTS.md:166"
+  - "docs/REQUIREMENTS.md:207"
+  - "docs/REQUIREMENTS.md:218"
+  - "docs/REQUIREMENTS.md:238"
+  - "docs/REQUIREMENTS.md:268"
+  - "docs/REQUIREMENTS.md:324"
+  - "docs/REQUIREMENTS.md:379"
+  - "docs/REQUIREMENTS.md:435"
+  - "docs/REQUIREMENTS.md:516"
+  - "docs/REQUIREMENTS.md:555"
+  - "docs/REQUIREMENTS.md:660"
+  - "docs/REQUIREMENTS.md:694"
+  - "docs/REQUIREMENTS.md:537"
+  - "docs/REQUIREMENTS.md:828"
+  - "docs/ROADMAP.md:7"
+  - "docs/ROADMAP.md:25"
+  - "docs/ROADMAP.md:54"
+  - "docs/ROADMAP.md:77"
+  - "docs/ROADMAP.md:79"
+  - "docs/ROADMAP.md:83"
+  - "docs/ROADMAP.md:108"
+  - "docs/ROADMAP.md:138"
+  - "docs/ROADMAP.md:141"
+  - "docs/ROADMAP.md:168"
+  - "docs/ROADMAP.md:166"
+  - "docs/ROADMAP.md:204"
+  - "docs/ROADMAP.md:206"
+  - "docs/ROADMAP.md:339"
+  - "docs/TASKS.md:10"
+  - "docs/TASKS.md:38"
+  - "docs/TASKS.md:39"
+  - "docs/TASKS.md:47"
+  - "docs/TASKS.md:53"
+  - "docs/TASKS.md:54"
+  - "docs/TASKS.md:59"
+  - "docs/TASKS.md:60"
+  - "docs/TASKS.md:61"
+  - "docs/TASKS.md:65"
+  - "docs/TASKS.md:66"
+  - "docs/TASKS.md:68"
+  - "docs/TASKS.md:70"
+  - "docs/TASKS.md:79"
+  - "docs/TASKS.md:78"
+  - "docs/TASKS.md:111"
+  - "docs/TASKS.md:150"
+  - "docs/TASKS.md:158"
+  - "docs/TASKS.md:160"
+  - "docs/TASKS.md:164"
+  - "docs/TASKS.md:166"
+  - "docs/TASKS.md:169"
+  - "docs/TASKS.md:171"
+  - "docs/TASKS.md:185"
+  - "docs/TASKS.md:223"
+  - "docs/TASKS.md:227"
+  - "docs/TASKS.md:237"
+  - "docs/TASKS.md:238"
+  - "docs/TASKS.md:250"
+  - "docs/TASKS.md:254"
+  - "docs/TASKS.md:260"
+  - "docs/TASKS.md:267"
+  - "docs/TASKS.md:268"
+  - "docs/TASKS.md:271"
+  - "docs/TASKS.md:279"
+  - "docs/TASKS.md:283"
+  - "docs/TASKS.md:302"
+  - "docs/TASKS.md:320"
+  - "docs/TASKS.md:323"
+  - "docs/TASKS.md:330"
+  - "docs/TASKS.md:338"
+  - "docs/TASKS.md:342"
+  - "docs/TASKS.md:348"
+  - "docs/TASKS.md:353"
+  - "docs/TASKS.md:355"
+  - "docs/TASKS.md:378"
+  - "docs/TASKS.md:474"
+  - "docs/TASKS.md:486"
+  - "docs/TASKS.md:496"
+  - "docs/TASKS.md:513"
+  - "docs/TASKS.md:534"
+  - "docs/TASKS.md:555"
+  - "docs/TASKS.md:556"
+  - "docs/WORKFLOW.md:3"
+  - "docs/WORKFLOW.md:33"
+  - "docs/WORKFLOW.md:60"
+  - "docs/WORKFLOW.md:76"
+  - "docs/WORKFLOW.md:94"
+
+# ----------------------------------------------------------------------
+# 判对的那些**不在这里列** —— 语义是：
+#
+#     抽样里出现、且**不在 `wrong` 里**的，就是判对的。
+#
+# 为什么不列：判对的理由全都一样 —— 它们都能回答
+# 「我打开这个仓库，怎么知道它是真是假？」。列出来只是重复 91 遍同一句话。
+#
+# 而判错的每一条都要单独写理由，因为**"错在哪"才是要统计的东西** ——
+# 它决定了下一步该改提示词还是加一条确定性过滤。
+# ----------------------------------------------------------------------

@@ -8,6 +8,7 @@ S0 阶段只有四条命令：``version`` / ``list-rules`` / ``explain`` / ``kno
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -30,6 +31,13 @@ from preflight.core.report import (
     write_report,
 )
 from preflight.detect.engine import run_path
+from preflight.detect.repo import Repo
+from preflight.runtime.budget import Budget
+from preflight.runtime.cache import ResponseCache
+from preflight.runtime.llm import DEFAULT_MODEL, LiteLLMClient, LLMBudgetExceeded
+from preflight.runtime.trace import Tracer
+from preflight.understand.claims import extract_claims
+from preflight.understand.discover import discover_documents
 
 app = typer.Typer(
     name="preflight",
@@ -453,6 +461,166 @@ def knowledge_check() -> None:
 
     console.print()
     console.print("[green]语料合法[/green]")
+
+
+@app.command("docs")
+def docs_cmd(
+    path: Path = typer.Argument(Path("."), help="要扫的项目目录"),  # noqa: B008
+    fmt: str = typer.Option("terminal", "--format", "-f", help="terminal / json"),
+) -> None:
+    """列出项目里的文档，以及它们被判成了什么类型。
+
+    **这一步不需要模型，也不花钱。** 它决定"待会儿要给模型看什么"，
+    所以先让它单独可跑、可检查 —— 分类错了要在这里就看得出来，
+    而不是等花完钱发现抽取结果不对。
+    """
+    knowledge = _load()
+    repo = Repo.scan(path)
+    docs = discover_documents(repo, knowledge.doc_roles)
+
+    if fmt == "json":
+        _emit_raw(
+            json.dumps([doc.model_dump(mode="json") for doc in docs], ensure_ascii=False, indent=2)
+        )
+        return
+
+    if not docs:
+        console.print("[yellow]没有找到任何文档。[/yellow]")
+        return
+
+    table = Table(header_style="bold")
+    table.add_column("类型", style="cyan", no_wrap=True)
+    table.add_column("文档")
+    table.add_column("行", justify="right")
+    table.add_column("抽取", no_wrap=True)
+    table.add_column("依据")
+
+    for doc in docs:
+        # `confident=False` 的是"按内容猜的" —— 要能一眼看出来，
+        # 因为按内容猜的准确率明显低一档
+        role = doc.role.value if doc.confident else f"{doc.role.value}?"
+        table.add_row(
+            role,
+            doc.path,
+            str(doc.lines),
+            "抽" if doc.worth_extracting else "[dim]跳过[/dim]",
+            f"[dim]{doc.why}[/dim]",
+        )
+
+    console.print(table)
+    console.print()
+    by_role: dict[str, int] = {}
+    for doc in docs:
+        by_role[doc.role.value] = by_role.get(doc.role.value, 0) + 1
+    summary = "、".join(f"{role} {count}" for role, count in sorted(by_role.items()))
+    console.print(f"{len(docs)} 份文档：{summary}")
+    unknown = [doc.path for doc in docs if doc.role.value == "unknown"]
+    if unknown:
+        # 认不出来**不是错误** —— 猜错才是。所以只提示，不影响退出码。
+        console.print(
+            f"[yellow]{len(unknown)} 份没认出来（标成 unknown，而不是硬猜一个）：[/yellow]"
+        )
+        for name in unknown:
+            console.print(f"  [dim]{name}[/dim]")
+
+
+@app.command("claims")
+def claims_cmd(
+    path: Path = typer.Argument(Path("."), help="要抽声明的项目目录"),  # noqa: B008
+    profile: str = typer.Option("cli-oss", "--profile", "-p", help="场景档案"),
+    fmt: str = typer.Option("terminal", "--format", "-f", help="terminal / json"),
+    out: Path | None = typer.Option(None, "--out", "-o", help="把结果写到文件"),  # noqa: B008
+    model: str = typer.Option(DEFAULT_MODEL, "--model", help="模型名"),
+    max_tokens: int = typer.Option(200_000, "--max-tokens", help="本次运行的 token 上限"),
+    max_cost: float = typer.Option(0.50, "--max-cost", help="本次运行的成本上限（美元）"),
+    max_calls: int = typer.Option(50, "--max-calls", help="本次运行最多调用几次"),
+    no_cache: bool = typer.Option(False, "--no-cache", help="不用缓存（会重新花钱）"),
+    trace: bool = typer.Option(False, "--trace", help="把每一步写到轨迹文件"),
+    api_key: str | None = typer.Option(
+        None,
+        "--api-key",
+        envvar="PREFLIGHT_API_KEY",
+        help="不传就读环境变量 PREFLIGHT_API_KEY",
+    ),
+) -> None:
+    """从文档里抽出可验证的声明。
+
+    ⚠️ **这一步会调用模型，会花钱。** 所以三道闸门默认都是开的：
+    ``--max-tokens`` / ``--max-cost`` / ``--max-calls``，任何一个撞到就停，
+    并说明停在哪一步。
+
+    模型只会"提议" —— 每一条引用都会拿去和原文**逐字核对**，
+    对不上的进 ``rejected``，不进结论。所以这一步的输出**不会编造**，
+    但它可能**漏抽**（宁可少抽，不要错抽）。
+    """
+    knowledge = _load()
+    repo = Repo.scan(path)
+    docs = discover_documents(repo, knowledge.doc_roles)
+
+    budget = Budget(max_tokens=max_tokens, max_cost_usd=max_cost, max_calls=max_calls)
+    cache = ResponseCache(enabled=not no_cache)
+    tracer = Tracer.to_file() if trace else Tracer()
+    client = LiteLLMClient(api_key=api_key)
+
+    console.print(f"[dim]模型 {model}；预算 {budget.summary_line()}[/dim]")
+    console.print()
+
+    try:
+        result = extract_claims(docs, repo, client, budget=budget, cache=cache, tracer=tracer)
+    except LLMBudgetExceeded as exc:
+        # 撞闸门**不是崩溃** —— 它是一个明确的"我停下来是因为预算"。
+        # 已经抽到的部分照样给出来。
+        console.print(f"[yellow]预算到顶，提前停止：{exc}[/yellow]")
+        raise typer.Exit(code=0) from exc
+    finally:
+        tracer.close()
+
+    result.model = result.model or model
+    if out is not None:
+        write_report(out, result.model_dump_json(indent=2))
+        console.print(f"[green]已写入 {_display_path(out)}[/green]")
+
+    if fmt == "json":
+        _emit_raw(result.model_dump_json(indent=2))
+        return
+
+    console.print(result.summary_line())
+    console.print(f"[dim]模型：{result.model or model}（{budget.summary_line()}）[/dim]")
+    console.print(f"[dim]{cache.summary_line()}[/dim]")
+
+    if result.claims:
+        table = Table(header_style="bold")
+        table.add_column("类型", style="cyan", no_wrap=True)
+        table.add_column("位置", no_wrap=True)
+        table.add_column("对象")
+        table.add_column("断言")
+        for claim in result.claims:
+            loose = "[dim]（宽松命中）[/dim]" if claim.loose_match else ""
+            table.add_row(
+                claim.kind.value,
+                f"{claim.doc}:{claim.line}",
+                claim.subject + loose,
+                claim.assertion,
+            )
+        console.print()
+        console.print(table)
+
+    if result.not_commitments:
+        console.print()
+        console.print(
+            f"[dim]{len(result.not_commitments)} 条不是承诺（计划 / 背景）—— "
+            "**它们不会被拿去验证**，列在这里是为了能证明我们没把它们当承诺：[/dim]"
+        )
+        for claim in result.not_commitments[:8]:
+            console.print(f"  [dim]{claim.modality.value:10s} {claim.doc}:{claim.line}[/dim]")
+
+    if result.rejected:
+        console.print()
+        console.print(
+            f"[yellow]{len(result.rejected)} 条引用没通过原文核对（模型改写或编造）：[/yellow]"
+        )
+        for claim in result.rejected[:5]:
+            console.print(f"  [dim]{claim.quote[:60]!r} —— {claim.rejected_reason}[/dim]")
 
 
 def main() -> None:

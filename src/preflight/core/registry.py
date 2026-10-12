@@ -30,14 +30,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
 
 import yaml
 from pydantic import BaseModel, ValidationError
 
+from preflight.core.claims import DocRoleTable
 from preflight.core.models import (
     AppliesTo,
     Audience,
@@ -51,6 +53,8 @@ from preflight.core.specs import CHECKERS, ParamSpec
 
 # 包内自带的语料。core/registry.py → parents[1] = preflight/
 DEFAULT_KNOWLEDGE_ROOT = Path(__file__).resolve().parents[1] / "knowledge"
+
+logger = logging.getLogger(__name__)
 
 # 语料子目录 → 对应的模型
 _SUBDIRS: Mapping[str, type[BaseModel]] = {
@@ -116,6 +120,15 @@ class MatrixCell:
 # --------------------------------------------------------------------------
 
 
+def _empty_doc_roles() -> DocRoleTable:
+    """空分类表。用 ``model_construct`` 绕开 ``rules`` 的 ``min_length=1``。
+
+    它只是个"还没加载"的占位值 —— 真正的空表在 `_load_doc_roles` 里
+    会被当成错误报出来，所以这里不需要（也不该）触发校验。
+    """
+    return DocRoleTable.model_construct(version=1, exclude_paths=[], rules=[], content_fallbacks=[])
+
+
 @dataclass(frozen=True)
 class Knowledge:
     """加载完成的知识。**只读。**"""
@@ -125,6 +138,9 @@ class Knowledge:
     rules: Mapping[str, Rule]
     profiles: Mapping[str, Profile]
     sources: Mapping[str, Path]
+    #: 文档分类表（``knowledge/docs/roles.yaml``）——
+    #: 文档理解层用，确定性层不碰它
+    doc_roles: DocRoleTable = field(default_factory=_empty_doc_roles)
 
     # ---- 查询 ----
 
@@ -266,12 +282,18 @@ def load_knowledge(
     if errors:
         raise KnowledgeLoadError(errors)
 
+    doc_roles, doc_errors = _load_doc_roles(roots)
+    errors.extend(doc_errors)
+    if errors:
+        raise KnowledgeLoadError(errors)
+
     knowledge = Knowledge(
         invariants=buckets["invariants"],
         mechanisms=buckets["mechanisms"],
         rules=buckets["rules"],
         profiles=buckets["profiles"],
         sources=sources,
+        doc_roles=doc_roles,
     )
 
     cross_errors = _validate_cross_references(knowledge)
@@ -279,6 +301,49 @@ def load_knowledge(
         raise KnowledgeLoadError(cross_errors)
 
     return knowledge
+
+
+_DOC_ROLES_RELATIVE = Path("docs") / "roles.yaml"
+
+
+def _load_doc_roles(roots: Sequence[Path]) -> tuple[DocRoleTable, list[KnowledgeError]]:
+    """加载文档分类表。**后加载的覆盖先加载的**（和规则一样）。
+
+    这一份不是"一个目录一个模型"那套：它是一份单独的 YAML，
+    因为分类规则是一个**有序列表**，拆成多文件之后顺序就没法保证了 ——
+    而顺序在这份数据里是正确性的一部分（REVIEW 必须在 DESIGN 前面）。
+    """
+    errors: list[KnowledgeError] = []
+    table = _empty_doc_roles()
+
+    for knowledge_root in roots:
+        path = knowledge_root / _DOC_ROLES_RELATIVE
+        if not path.is_file():
+            continue
+        try:
+            raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError as exc:
+            errors.append(KnowledgeError(path=path, field_path="", message=f"YAML 解析失败：{exc}"))
+            continue
+        try:
+            table = DocRoleTable.model_validate(raw)
+        except ValidationError as exc:
+            errors.extend(_translate_validation_error(path, exc))
+            continue
+
+    if not table.rules:
+        # ⚠️ **文件不存在不是错误。**
+        #
+        # 自定义语料目录（`load_knowledge(custom_root)`）通常只放几条规则，
+        # 不会带一份文档分类表 —— 那不是配置错了，是"这个语料目录没配文档分类"。
+        # 报错会逼着每个想加一条规则的人都复制一份 roles.yaml，
+        # 而复制出来的那份**永远不会跟着上游更新**。
+        #
+        # 真正该守的是"**自带的**那份不能是空的" —— 那是打包问题
+        # （比如 wheel 里漏了 knowledge 目录），由测试守着，不该由运行时守着。
+        logger.debug("没有找到文档分类表，文档发现会全部落到 unknown")
+
+    return table, errors
 
 
 ModelT = TypeVar("ModelT", bound=BaseModel)

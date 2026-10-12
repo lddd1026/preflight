@@ -62,28 +62,50 @@
 
 ## 当前状态
 
-🏁 **v0.1 功能面已齐 —— S0–S3 完成，29 条规则全部落地，没有未实现的检查器。**
-下一步 S4（文档发现 + 声明抽取）。
+🏁 **v0.1 功能面已齐**（S0–S3，29 条规则全部落地）。
+**S4 文档理解层的基础设施完成，但准确率未达标**（84.3% < 85% 门槛）。
+详见 [docs/PROGRESS.md](docs/PROGRESS.md)。
 
 **现在能跑什么：**
 
 ```powershell
 pwsh -File scripts/setup.ps1          # 建 .venv 装依赖
 
-preflight run .                       # ⭐ 跑一次上线前评审
+preflight run .                       # ⭐ 跑一次上线前评审（零 LLM、零联网）
 preflight run . -p agent-enterprise   # 换一个场景档案（门禁更严）
 preflight run . -f markdown -o RELEASE_REVIEW.md
 preflight run . -f json               # 给下一次运行做机器对比
 preflight run . --full                # 连修复建议和血案一起打印
 
+preflight docs .                      # 看项目里有哪些文档、判成了什么类型（不花钱）
+preflight docs . -f json
+
 preflight list-rules                  # 看有哪些规则
-preflight list-rules -p cli-oss       # 按档案过滤 ← 不同档案跑不同规则集
 preflight list-rules --matrix         # 看矩阵里哪些格子还没人覆盖
 preflight explain agent/no-request-timeout   # 讲清一条规则，含它对应的血案
 preflight knowledge-check             # 校验语料（贡献规则的入口）
 
 pwsh -File scripts/check.ps1          # ruff + format + pytest + mypy
 ```
+
+### 文档理解层（会调用模型，会花钱）
+
+```powershell
+pip install -e ".[dev,llm]"           # 可选：装 litellm（不装也能用，见下）
+$env:PREFLIGHT_API_KEY = "..."        # 或者 --api-key
+
+preflight claims .                    # 从文档里抽可验证的声明
+preflight claims . --max-cost 0.20    # 三道闸门默认都开着
+preflight claims . --trace            # 每一步都落盘，事后可复盘
+```
+
+**零依赖也能跑**：内置一个标准库实现的 OpenAI 兼容客户端
+（DeepSeek / OpenAI / Moonshot / Qwen / vLLM / Ollama 都是这个形状）。
+装 `[llm]` 只是多一个 litellm 后端，用来覆盖更多 provider。
+
+> **模型只"提议"，代码负责核对。** 每一条引用都会拿去和原文逐字核对，
+> 对不上的进 `rejected`，**不进结论**。所以这一步的输出不会编造 ——
+> 但它可能漏抽（宁可少抽，不要错抽）。
 
 ### 双跑对比：这就是它能做什么
 
@@ -134,8 +156,8 @@ pip install -e ".[dev,tools]"         # 装 pip-audit + ruff
 
 **矩阵规则 1 条**：消息队列 × 不丢失。
 
-**还不能做什么：** 文档理解层（S4/S5）、机制探测（S6）、人工签核与豁免（S7）、
-发布到 PyPI（S8）。
+**还不能做什么：** 声明→证据的核对与文档兑现率（S5）、机制探测（S6）、
+人工签核与豁免（S7）、发布到 PyPI（S8）。
 
 | 阶段 | 内容 | 状态 |
 | --- | --- | --- |
@@ -143,14 +165,15 @@ pip install -e ".[dev,tools]"         # 装 pip-audit + ruff
 | S1 | 确定性检测引擎（11 条通用规则） | ✅ |
 | S2 | 外部工具编排（pip-audit / gitleaks / ruff） | ✅ |
 | S3 | agent 专项规则（14 条）+ 双跑验证 | ✅ 🏁 **v0.1 功能面** |
-| S4 | 文档发现 + 声明抽取 | ⬜ |
-| S5 | 证据核对 + 防编造 | ⬜ |
+| S4 | 文档发现 + 声明抽取 | ⚠️ 基础设施完成，**准确率 84.3% < 85%** |
+| S5 | 证据核对 + 防编造 + 文档兑现率 | ⬜ |
 | S6 | 机制推导 + 矩阵 | ⬜ |
 | S7 | 人工签核 + 豁免 + CI 门禁 | ⬜ |
 | S8 | 打包发布 | ⬜ |
 
-**当前规模**：43 个 Python 文件 · 源码 5430 行 / 测试 3761 行 ·
-**314 passed + 3 skipped** · 语料 29 条规则 / 22 个检查器（全部实现）· mypy 全绿。
+**当前规模**：55 个 Python 文件 · 源码 7493 行 / 测试 4639 行 ·
+**377 passed + 3 skipped** · 语料 29 条规则 / 22 个检查器（全部实现）·
+9 类文档分类规则 · mypy 全绿。
 
 进度细节见 [docs/PROGRESS.md](docs/PROGRESS.md)。
 

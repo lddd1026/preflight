@@ -74,11 +74,18 @@ def base_files() -> dict[str, str]:
 
 
 def write_knowledge(root: Path, files: Mapping[str, str]) -> Path:
-    """把 ``{相对路径: 文件内容}`` 写到 ``root`` 下。"""
+    """把 ``{相对路径: 文件内容}`` 写到 ``root`` 下。
+
+    ⚠️ **`newline="\\n"` 不是可选项。** 少了它，Windows 上写的 ``\\n``
+    会变成 ``\\r\\n``，而测试里显式写的 ``\\r\\n`` 会变成 ``\\r\\r\\n`` ——
+    于是"同一份内容"在两台机器上字节不同，依赖内容指纹的测试会
+    只在其中一个平台上红。CI 跑的是 Ubuntu + Windows 双平台。
+    """
+    root.mkdir(parents=True, exist_ok=True)
     for relative, content in files.items():
         target = root / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
+        target.write_text(content, encoding="utf-8", newline="\n")
     return root
 
 

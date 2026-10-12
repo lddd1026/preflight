@@ -25,6 +25,75 @@
 from __future__ import annotations
 
 # --------------------------------------------------------------------------
+# DOCS：一个"文档齐全"的项目 —— 文档发现与分类的夹具
+#
+# 文件名照着真实项目的命名习惯来（fivewhys 那 9 份就是这套），
+# 而且**每份的内容都短但有特征**：分类器只需要文件名，
+# 内容长度只要过 MIN_DOC_CHARS 那道门槛。
+#
+# 为什么要有这份夹具：分类错了不会报错，只会让后面整条链的判断偏掉 ——
+# 而那是**唯一**能提前发现它的地方。
+# --------------------------------------------------------------------------
+
+_DOC_BODY = (
+    "这一节写的是本项目的情况，内容要够长才能过最小长度门槛。\n\n"
+    "## 第一节\n\n"
+    "这里有一些说明文字，用来让文档超过最小长度门槛。\n"
+    "再补一句，免得因为太短被跳过。分类器只看文件名，\n"
+    "内容只用来兜底 —— 所以这些文字是陪衬，不是判据。\n\n"
+    "## 第二节\n\n"
+    "还有一些别的内容，同样是为了凑够长度。\n"
+    "真实项目里的文档通常比这长得多，这里只是夹具。\n"
+    "最后再补一行，确保稳稳超过 200 字这个门槛 —— 差两个字就掉下去过。\n"
+)
+
+DOCS: dict[str, str] = {
+    "README.md": f"# 演示项目\n\n{_DOC_BODY}",
+    "SECURITY.md": f"# 安全说明\n\n{_DOC_BODY}",
+    "CONTRIBUTING.md": f"# 贡献指南\n\n{_DOC_BODY}",
+    "CHANGELOG.md": f"# 变更记录\n\n{_DOC_BODY}",
+    "LICENSE": f"MIT License\n\n{_DOC_BODY}",
+    "docs/DESIGN.md": f"# 设计方案\n\n{_DOC_BODY}",
+    "docs/REQUIREMENTS.md": f"# 需求说明\n\n{_DOC_BODY}",
+    "docs/OPERATIONS.md": f"# 运维手册\n\n{_DOC_BODY}",
+    "docs/RELEASE_REVIEW.md": f"# 上线前审查报告\n\n{_DOC_BODY}",
+    "docs/ROADMAP.md": f"# 路线图\n\n{_DOC_BODY}",
+    "docs/TASKS.md": f"# 任务看板\n\n{_DOC_BODY}",
+    "docs/WORKFLOW.md": f"# 开发流程\n\n{_DOC_BODY}",
+    ".github/PULL_REQUEST_TEMPLATE.md": f"# 这个 PR 做了什么\n\n{_DOC_BODY}",
+    # 这些**不该**被当成项目文档
+    ".venv/lib/python3.13/site-packages/README.md": "# 第三方包的 README\n",
+    "node_modules/left-pad/README.md": "# 别人的 README\n",
+    ".pytest_cache/README.md": "# pytest 自己写的\n",
+    # 太短，要跳过
+    "docs/PLACEHOLDER.md": "# 占位\n\n见上一级。\n",
+}
+
+#: 这些文件的角色是**钉死**的 —— 分类器改了它们任何一个，测试就红。
+DOCS_EXPECTED_ROLES: dict[str, str] = {
+    "README.md": "entry",
+    "SECURITY.md": "security",
+    "CONTRIBUTING.md": "convention",
+    "CHANGELOG.md": "metadata",
+    "LICENSE": "metadata",
+    "docs/DESIGN.md": "design",
+    "docs/REQUIREMENTS.md": "requirements",
+    "docs/OPERATIONS.md": "operations",
+    "docs/RELEASE_REVIEW.md": "review",
+    "docs/ROADMAP.md": "plan",
+    "docs/TASKS.md": "plan",
+    "docs/WORKFLOW.md": "convention",
+    ".github/PULL_REQUEST_TEMPLATE.md": "convention",
+}
+
+#: 这几份**不该**出现在发现结果里
+DOCS_MUST_NOT_APPEAR: tuple[str, ...] = (
+    ".venv/lib/python3.13/site-packages/README.md",
+    "node_modules/left-pad/README.md",
+    ".pytest_cache/README.md",
+)
+
+# --------------------------------------------------------------------------
 # CLEAN：一个"什么毛病都没有"的项目
 #
 # 注意它是**相对当前规则集**干净，不是绝对干净 ——
