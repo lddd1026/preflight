@@ -43,6 +43,7 @@ from typing import TypeVar
 from preflight.core.claims import (
     Claim,
     ClaimKind,
+    ClaimMarkers,
     ClaimModality,
     ClaimSet,
     DocFile,
@@ -283,6 +284,7 @@ def extract_claims(
     repo: Repo,
     client: LLMClient,
     *,
+    markers: ClaimMarkers,
     budget: Budget | None = None,
     cache: ResponseCache | None = None,
     tracer: Tracer | None = None,
@@ -291,6 +293,10 @@ def extract_claims(
     """在一批文档上抽声明。
 
     每一步都会：① 查缓存 → ② 估算并检查预算 → ③ 调模型 → ④ 记账 → ⑤ 核对。
+
+    ``markers`` 是**必填的**（来自 ``knowledge/doc_roles.yaml``）。
+    为什么不做成可选：它是那几道确定性核对的一部分，给个默认值等于
+    让"忘了传"变成一个**静默失效** —— 核对悄悄不生效，而输出看起来正常。
     """
     budget = budget or Budget()
     cache = cache or ResponseCache(enabled=False)
@@ -314,7 +320,7 @@ def extract_claims(
             if raw is None:
                 continue
 
-            claims = _parse(raw, doc, content)
+            claims = _parse(raw, doc, content, markers)
             _bucket(claims, result)
             tracer.record(
                 "extract",
@@ -423,7 +429,7 @@ def _remember_model(tracer: Tracer, response: LLMResponse, seen: list[str]) -> N
 # --------------------------------------------------------------------------
 
 
-def _parse(raw: str, doc: DocFile, content: str) -> list[Claim]:
+def _parse(raw: str, doc: DocFile, content: str, markers: ClaimMarkers) -> list[Claim]:
     """把模型的 JSON 翻成 Claim，并**逐条核对**。
 
     解析失败**不抛异常** —— 一份文档抽失败不该让整次运行挂掉。
@@ -449,7 +455,7 @@ def _parse(raw: str, doc: DocFile, content: str) -> list[Claim]:
 
     claims: list[Claim] = []
     for position, item in enumerate(items):
-        claims.append(_one(item, doc, content, position))
+        claims.append(_one(item, doc, content, position, markers))
     return claims
 
 
@@ -513,7 +519,7 @@ def _salvage_truncated(text: str) -> list[object] | None:
     return items or None
 
 
-def _one(item: object, doc: DocFile, content: str, position: int) -> Claim:
+def _one(item: object, doc: DocFile, content: str, position: int, markers: ClaimMarkers) -> Claim:
     if not isinstance(item, dict):
         return _rejected(doc, str(item)[:200], "claim 不是对象")
 
@@ -547,9 +553,19 @@ def _one(item: object, doc: DocFile, content: str, position: int) -> Claim:
     #
     # 这三类**不需要模型判断**，代码一眼就能认出来。放在这里做，
     # 比在提示词里反复叮嘱可靠得多（也便宜得多）。
-    implausible = _structurally_implausible(quote, content, line_number)
+    implausible = _structurally_implausible(quote, content, line_number, markers)
     if implausible is not None:
         return _rejected(doc, quote, implausible, claim_id=claim_id)
+
+    modality = _enum(ClaimModality, item.get("modality"), ClaimModality.COMMITMENT)
+    # **代码有最终否决权。**
+    #
+    # 模型说是 commitment，但这句话里写着「验收标准」或「待办」——
+    # 那它就不是现状。这是「模型提议，代码核对」用在 modality 上：
+    # 分类错误不会报错，只会让一个还没做的计划混进"承诺"里，
+    # 而验证它必然失败。
+    if modality is ClaimModality.COMMITMENT and forced_plan(quote, markers):
+        modality = ClaimModality.PLAN
 
     return Claim(
         id=claim_id,
@@ -557,7 +573,7 @@ def _one(item: object, doc: DocFile, content: str, position: int) -> Claim:
         line=line_number,
         quote=quote,
         kind=_enum(ClaimKind, item.get("kind"), ClaimKind.EXISTENCE),
-        modality=_enum(ClaimModality, item.get("modality"), ClaimModality.COMMITMENT),
+        modality=modality,
         subject=str(item.get("subject", "")).strip() or "（未说明）",
         assertion=str(item.get("assertion", "")).strip(),
         verified=True,
@@ -588,14 +604,17 @@ _PROCESS_HEADING = re.compile(
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 
 
-def _structurally_implausible(quote: str, content: str, line: int | None) -> str | None:
+def _structurally_implausible(
+    quote: str, content: str, line: int | None, markers: ClaimMarkers
+) -> str | None:
     """这段引用**结构上**像一条断言吗。像就返回 None，不像就返回原因。
 
     这一层全是**确定性的**判断 —— 它们不需要模型，而且比在提示词里
     反复叮嘱可靠得多（也便宜得多）。
 
     实测依据：第一版提示词之后仍有约 20% 的抽取是错的，而其中
-    最大的一类是「对人的要求」和「清单/表格碎片」。这些**代码一眼就能认**。
+    最大的一类是「对人的要求」「指令」「提问」和「表格碎片」。
+    这些**代码一眼就能认**。
     """
     if any(char in quote for char in _TREE_CHARS):
         return "这是结构图 / 目录树的片段，不是一句断言"
@@ -606,15 +625,74 @@ def _structurally_implausible(quote: str, content: str, line: int | None) -> str
     if _CHECKLIST.match(quote):
         return "这是清单里的一条勾选项（进度记录），不是对系统的断言"
 
+    stripped = quote.strip()
+    if any(stripped.endswith(mark) for mark in markers.question_ending):
+        return "这是一个提问 —— 提问没有真假可言"
+
+    if _starts_with_imperative(stripped, markers.imperative_starts):
+        return "这是给**读者**的操作指令，不是对系统的断言"
+
     if line is not None:
         lines = content.splitlines()
         if _inside_code_fence(lines, line):
             return "这段引用在代码块里 —— 那是示例，不是文档的断言"
+        if _leads_into_a_code_block(lines, line, stripped):
+            return "这是一句引出示例的引导语（后面跟着代码块），不是断言"
         heading = _nearest_heading(lines, line)
         if heading and _PROCESS_HEADING.search(heading):
             return f"这段引用在「{heading}」这一节里 —— 那是**对人**的流程约定，打开仓库验证不了"
 
     return None
+
+
+def _starts_with_imperative(quote: str, starts: list[str]) -> bool:
+    """引用以祈使动词开头吗（「读 X」「用 Y 写日志」）。
+
+    要求动词后面跟**空格或反引号** —— 中文里"读文件"和"读 `x`"是两种语气，
+    而只有后者是指令。这个约束把「看起来」「先前的」这类误伤挡在外面。
+    """
+    for verb in starts:
+        if not quote.startswith(verb):
+            continue
+        rest = quote[len(verb) :]
+        if rest[:1] in {" ", "\u3000", "`", "「", "'", '"'}:
+            return True
+    return False
+
+
+def _leads_into_a_code_block(lines: list[str], line: int, quote: str) -> bool:
+    """这句话是不是"引出示例"的引导语。
+
+    形状：以冒号结尾，而且**下一段非空内容**是围栏代码块。
+    「在 `.env` 里配好 key，跑：」后面跟一段 bash —— 那是操作指令，
+    不是对系统的断言。
+    """
+    if not quote.endswith(("：", ":")):
+        return False
+    for text in lines[line:]:
+        stripped = text.strip()
+        if not stripped:
+            continue
+        return stripped.startswith("```")
+    return False
+
+
+def forced_plan(quote: str, markers: ClaimMarkers) -> bool:
+    """这句话是不是**必须**标成 plan（不管模型怎么说）。
+
+    两类：
+
+    1. 含"标准"词（验收 / 判定线 / 关键路径）**且**没有完成标记 ——
+       标准说的是"将来按什么判"，不是"现在是什么样"
+    2. 含明确的将来词（尚未 / 待办 / 计划 / ⬜ …）
+
+    第 1 类的例外很重要：同一句里出现 ✅ / 已完成 时，那句话是**事实**
+    （「M1 验收通过 ✅」），不能误标成计划。
+    """
+    has_completion = any(mark in quote for mark in markers.completion)
+    if not has_completion and any(mark in quote for mark in markers.criterion):
+        return True
+    return any(mark in quote for mark in markers.future)
 
 
 def _inside_code_fence(lines: list[str], line: int) -> bool:

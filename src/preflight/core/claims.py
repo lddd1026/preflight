@@ -188,6 +188,28 @@ class DocContentFallback(BaseModel):
     keywords: list[str] = Field(min_length=1)
 
 
+class ClaimMarkers(BaseModel):
+    """判定"这一句算不算承诺"用的标记词。**这是数据**（纪律 D4）。
+
+    和提示词的分工很清楚：提示词说**原则**，这里说**判据**。
+
+    实测的教训是：写进提示词的那几类排除项**仍然会漏**（模型读得懂，
+    但一条一条照做不可靠）；而写在这里的每一条都能配一个正反例测试。
+    **能用代码确定性判的事，不该交给提示词反复叮嘱。**
+    """
+
+    #: 出现这些 → 这句话定义的是一个**标准**，不是现状 → 强制标成 plan
+    criterion: list[str] = Field(default_factory=list)
+    #: 出现这些 → 这件事已经发生，`criterion` 里的词不再是"标准"
+    completion: list[str] = Field(default_factory=list)
+    #: 出现这些 → 说的是将来 → 强制标成 plan
+    future: list[str] = Field(default_factory=list)
+    #: 引用以这些词开头（后跟空格或反引号）→ 是给读者的**指令**，不是断言
+    imperative_starts: list[str] = Field(default_factory=list)
+    #: 引用以这些结尾 → 那是**提问**
+    question_ending: list[str] = Field(default_factory=list)
+
+
 class DocRoleTable(BaseModel):
     """文档分类表 —— 从 ``knowledge/docs/roles.yaml`` 读进来。
 
@@ -205,6 +227,8 @@ class DocRoleTable(BaseModel):
     exclude_paths: list[str] = Field(default_factory=list)
     rules: list[DocRoleRule] = Field(min_length=1)
     content_fallbacks: list[DocContentFallback] = Field(default_factory=list)
+    #: 声明判定用的标记词（见 :class:`ClaimMarkers`）
+    claim_markers: ClaimMarkers = Field(default_factory=ClaimMarkers)
 
     @property
     def enabled_rules(self) -> list[DocRoleRule]:
@@ -245,6 +269,7 @@ class ClaimSet(BaseModel):
 __all__ = [
     "Claim",
     "ClaimKind",
+    "ClaimMarkers",
     "ClaimModality",
     "ClaimSet",
     "DocContentFallback",

@@ -101,6 +101,7 @@ def main() -> int:
             cache=cache,
             tracer=tracer,
             prompt_version=PROMPT_VERSION,
+            markers=knowledge.doc_roles.claim_markers,
         )
     except LLMError as exc:
         print(f"调用失败：{exc}")

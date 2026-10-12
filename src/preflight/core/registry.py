@@ -39,7 +39,7 @@ from typing import Any, TypeVar
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from preflight.core.claims import DocRoleTable
+from preflight.core.claims import ClaimMarkers, DocRoleTable
 from preflight.core.models import (
     AppliesTo,
     Audience,
@@ -126,7 +126,13 @@ def _empty_doc_roles() -> DocRoleTable:
     它只是个"还没加载"的占位值 —— 真正的空表在 `_load_doc_roles` 里
     会被当成错误报出来，所以这里不需要（也不该）触发校验。
     """
-    return DocRoleTable.model_construct(version=1, exclude_paths=[], rules=[], content_fallbacks=[])
+    return DocRoleTable.model_construct(
+        version=1,
+        exclude_paths=[],
+        rules=[],
+        content_fallbacks=[],
+        claim_markers=ClaimMarkers(),
+    )
 
 
 @dataclass(frozen=True)

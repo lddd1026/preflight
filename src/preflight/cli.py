@@ -566,7 +566,15 @@ def claims_cmd(
     console.print()
 
     try:
-        result = extract_claims(docs, repo, client, budget=budget, cache=cache, tracer=tracer)
+        result = extract_claims(
+            docs,
+            repo,
+            client,
+            markers=knowledge.doc_roles.claim_markers,
+            budget=budget,
+            cache=cache,
+            tracer=tracer,
+        )
     except LLMBudgetExceeded as exc:
         # 撞闸门**不是崩溃** —— 它是一个明确的"我停下来是因为预算"。
         # 已经抽到的部分照样给出来。

@@ -134,7 +134,13 @@ def claims_repo(tmp_path: Path) -> Path:
 def _extract(repo: Path, reply: str, **kwargs):
     client = FakeLLMClient(replies=[reply])
     docs = discover_documents(Repo.scan(repo), KNOWLEDGE.doc_roles)
-    result = extract_claims(docs, Repo.scan(repo), client, **kwargs)
+    result = extract_claims(
+        docs,
+        Repo.scan(repo),
+        client,
+        markers=KNOWLEDGE.doc_roles.claim_markers,
+        **kwargs,
+    )
     return result, client
 
 
@@ -292,7 +298,7 @@ def _quote_reason(content: str, quote: str) -> str | None:
 
     match = match_quote(content, quote)
     assert match is not None, f"这段引用在文档里找不到，测不了：{quote!r}"
-    return _structurally_implausible(quote, content, match[0])
+    return _structurally_implausible(quote, content, match[0], KNOWLEDGE.doc_roles.claim_markers)
 
 
 def test_tree_diagram_fragments_are_rejected() -> None:
@@ -432,6 +438,163 @@ def test_plain_bullet_with_a_real_claim_is_kept(tmp_path: Path) -> None:
     result, _ = _extract(root, reply)
 
     assert len(result.claims) == 1, "普通列表项里的真声明必须留下"
+
+
+# --------------------------------------------------------------------------
+# ⭐ 标记词核对 —— 「模型提议，代码核对」用在 modality 上
+# --------------------------------------------------------------------------
+
+
+def test_questions_are_rejected() -> None:
+    """提问没有真假可言 —— 它不是断言。"""
+    content = "# 演示\n\n这张表里的成本数字，是我抄的还是我编的？\n\n补充文字。\n"
+
+    assert _quote_reason(content, "这张表里的成本数字，是我抄的还是我编的？") is not None
+
+
+def test_lead_ins_to_a_code_block_are_rejected() -> None:
+    """「在 .env 里配好 key，跑：」后面跟一段 bash —— 那是操作指令。
+
+    判据是**结构**而不是措辞：以冒号结尾，且下一段非空内容是围栏代码块。
+    """
+    content = "# 演示\n\n在 `.env` 里配好 key，跑：\n\n```bash\nfivewhys run\n```\n"
+
+    assert _quote_reason(content, "在 `.env` 里配好 key，跑：") is not None
+
+
+def test_imperative_instructions_are_rejected() -> None:
+    """给**读者**的指令不是对系统的断言。
+
+    要求动词后面跟空格或反引号 —— 中文里"读文件"和"读 `x`"是两种语气，
+    只有后者是指令。
+    """
+    content = (
+        "# 演示\n\n读 `scenarios.py` 头部注释，里面写了完整的日志规格。\n用 `emit()` 写日志。\n"
+    )
+
+    assert (
+        _quote_reason(content, "读 `scenarios.py` 头部注释，里面写了完整的日志规格。") is not None
+    )
+    assert _quote_reason(content, "用 `emit()` 写日志。") is not None
+
+
+def test_words_that_merely_look_imperative_are_kept() -> None:
+    """**「看起来」不是「读 `x`」。**
+
+    这一条在防"祈使动词表收得太宽"：如果只看首字，
+    「看起来」「读数」都会被误杀，而它们是正常断言。
+    """
+    content = "# 演示\n\n看起来这个方案更稳。\n读数一共有 29 条规则。\n"
+
+    assert _quote_reason(content, "看起来这个方案更稳。") is None
+    assert _quote_reason(content, "读数一共有 29 条规则。") is None
+
+
+def test_criterion_lines_are_forced_to_plan() -> None:
+    """**「标准」不是「现状」。**
+
+    「验收：跑 5 次，至少 3 次给出正确根因」说的是"将来按什么判"，
+    不是"现在是什么样"。验证它必然失败 —— 因为它本来就还没发生。
+
+    而模型很容易把它标成 commitment（句子读起来很像断言），
+    所以这里由**代码**做最终否决。
+    """
+    from preflight.core.claims import ClaimMarkers
+    from preflight.understand.claims import forced_plan
+
+    markers = ClaimMarkers(
+        criterion=["验收", "关键路径"],
+        completion=["✅", "已完成", "通过"],
+        future=["待办", "计划"],
+    )
+
+    assert forced_plan("**验收**：跑 5 次，至少 3 次给出正确根因", markers)
+    assert forced_plan("**关键路径**：M1 → M2 → M4", markers)
+    assert forced_plan("FIV-20 待办：评测执行器", markers)
+
+
+def test_completed_criteria_are_not_forced_to_plan() -> None:
+    """**「验收通过 ✅」是事实，不是标准。**
+
+    少了这条例外，一批真承诺会被误标成计划 —— 而误标成计划之后
+    它们就再也不会被验证，且不会有任何报错。
+    """
+    from preflight.core.claims import ClaimMarkers
+    from preflight.understand.claims import forced_plan
+
+    markers = ClaimMarkers(criterion=["验收"], completion=["✅", "已完成", "通过"])
+
+    assert not forced_plan("**✅ 2026-09-10 验收通过：5 次全部 100%。**", markers)
+    assert not forced_plan("验收：3 个服务互相调用 ✅", markers)
+    assert forced_plan("验收：跑 5 次，至少 3 次给出正确根因", markers)
+
+
+def test_forced_plan_overrides_the_model(tmp_path: Path) -> None:
+    """**代码有最终否决权。**
+
+    模型说是 commitment，但这句话里写着「验收标准」——
+    那它就不是现状。分类错误不会报错，只会让一个还没做的计划混进"承诺"里，
+    而验证它必然失败。
+    """
+    body = (
+        "# 演示\n\n"
+        "## 验收\n\n"
+        "**验收标准**：跑 5 次，至少 3 次给出正确根因。\n"
+        "本项目一共有 29 条规则。\n" + "补充说明文字，用来让文档超过最小长度门槛。\n" * 12
+    )
+    root = write_knowledge(tmp_path / "proj", {"docs/README.md": body})
+    reply = _reply(
+        [
+            {
+                "quote": "**验收标准**：跑 5 次，至少 3 次给出正确根因。",
+                "kind": "behavior",
+                # 模型**说错了** —— 它把标准当成了现状
+                "modality": "commitment",
+                "subject": "验收标准",
+                "assertion": "5 次至少 3 次对",
+            },
+            {
+                "quote": "本项目一共有 29 条规则。",
+                "kind": "quantity",
+                "modality": "commitment",
+                "subject": "规则数量",
+                "assertion": "29 条",
+            },
+        ]
+    )
+    result, _ = _extract(root, reply)
+
+    assert len(result.claims) == 1, "只有真承诺留下"
+    assert result.claims[0].subject == "规则数量"
+    assert len(result.not_commitments) == 1, "标准那条要落到 not_commitments"
+    assert result.not_commitments[0].modality is ClaimModality.PLAN
+
+
+def test_markers_are_required_not_optional() -> None:
+    """``markers`` **必须是必填参数**。
+
+    做成可选就等于让"忘了传"变成一个**静默失效** —— 那几道核对悄悄
+    不生效，而输出看起来完全正常。这类 bug 只有测试能拦。
+    """
+    import inspect
+
+    signature = inspect.signature(extract_claims)
+    parameter = signature.parameters["markers"]
+
+    assert parameter.default is inspect.Parameter.empty, (
+        "markers 不能有默认值 —— 默认值会让忘了传变成一个静默失效"
+    )
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+
+
+def test_shipped_markers_are_loadable() -> None:
+    """自带的标记词表不能是空的 —— 空表等于那几道核对全部失效。"""
+    markers = KNOWLEDGE.doc_roles.claim_markers
+
+    assert markers.criterion, "标准词表空了"
+    assert markers.future, "将来词表空了"
+    assert markers.imperative_starts, "祈使动词表空了"
+    assert markers.question_ending, "问号表空了"
 
 
 # --------------------------------------------------------------------------
@@ -626,7 +789,13 @@ def test_budget_stops_before_the_call_not_after(claims_repo: Path) -> None:
     budget = Budget(max_calls=0)
 
     with pytest.raises(LLMBudgetExceeded) as excinfo:
-        extract_claims(docs, Repo.scan(claims_repo), client, budget=budget)
+        extract_claims(
+            docs,
+            Repo.scan(claims_repo),
+            client,
+            markers=KNOWLEDGE.doc_roles.claim_markers,
+            budget=budget,
+        )
 
     assert client.calls == [], "撞闸门时一次都不该调"
     assert "上限" in str(excinfo.value)
@@ -749,7 +918,13 @@ def test_failing_client_does_not_crash_the_run(claims_repo: Path) -> None:
     docs = discover_documents(Repo.scan(claims_repo), KNOWLEDGE.doc_roles)
     tracer = Tracer()
 
-    result = extract_claims(docs, Repo.scan(claims_repo), client, tracer=tracer)
+    result = extract_claims(
+        docs,
+        Repo.scan(claims_repo),
+        client,
+        markers=KNOWLEDGE.doc_roles.claim_markers,
+        tracer=tracer,
+    )
 
     assert result.claims == []
     assert result.rejected == []
