@@ -39,13 +39,15 @@ def test_shipped_corpus_loads(shipped: Knowledge) -> None:
     S1 补齐 11 条通用规则 → 13 条；
     S2 加 3 条适配器规则 → 16 条；
     S3 补齐 14 条 agent 规则 → 29 条；
-    S6 补齐 10 个机制 → **10 个机制**。）
+    S6 补齐 10 个机制 → **10 个机制**；
+    S7 补齐 4 个档案（cli-oss / saas-consumer / saas-enterprise / agent-enterprise）
+    → **4 个档案**。）
     """
     assert shipped.counts == {
         "invariants": 6,
         "mechanisms": 10,
         "rules": 29,
-        "profiles": 3,
+        "profiles": 4,
     }
 
 
@@ -160,11 +162,48 @@ def test_agent_enterprise_excludes_software_rules(shipped: Knowledge) -> None:
 def test_include_pulls_a_rule_across_the_applies_to_boundary(shipped: Knowledge) -> None:
     """``include`` 的意义：一个传统软件里调了 LLM，就得跑模型调用侧的规则。
 
-    这是真实形态（Django 里加个 AI 摘要），不是构造出来的场景。
+    这是真实形态（SaaS 里加个 AI 摘要），不是构造出来的场景。
+
+    ⚠️ **include 必须是"真的跨边界"的。**
+    第一版 `saas-consumer` 里写的是 `general/config-name-drift` ——
+    那是个**空操作**（它本来就是 `applies_to: both`，早被选中了）。
+    死数据比没有更糟：它看起来像"这个档案有额外要求"，实际什么都没做。
     """
-    selected = {rule.id for rule in shipped.select("software-with-llm")}
+    selected = {rule.id for rule in shipped.select("saas-consumer")}
     assert "agent/no-request-timeout" in selected, "include 没有把 agent 规则拉进来"
     assert "message-queue/no-loss-backlog-recovery" in selected
+
+
+def test_no_profile_has_a_noop_include(shipped: Knowledge) -> None:
+    """**档案里的 include 不许是空操作。**
+
+    一条"本来就会被选中"的 include，读起来像额外要求，
+    实际什么都没做 —— 而那会让人以为门禁比实际更严。
+    """
+    for profile in shipped.profiles.values():
+        if not profile.include:
+            continue
+        base = {
+            rule.id
+            for rule in shipped.rules.values()
+            if rule.id not in profile.exclude
+            and _applies_public(rule.applies_to, profile.applies_to)
+            and _audience_public(rule.audience, profile.audience)
+        }
+        noop = [rule_id for rule_id in profile.include if rule_id in base]
+        assert not noop, f"{profile.id} 的 include 里有空操作：{noop}"
+
+
+def _applies_public(rule_side: object, profile_side: object) -> bool:
+    from preflight.core.registry import _applies
+
+    return _applies(rule_side, profile_side)  # type: ignore[arg-type]
+
+
+def _audience_public(rule_side: object, profile_side: object) -> bool:
+    from preflight.core.registry import _audience_matches
+
+    return _audience_matches(rule_side, profile_side)  # type: ignore[arg-type]
 
 
 def test_unknown_profile_raises(shipped: Knowledge) -> None:

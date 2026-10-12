@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import typer
@@ -19,13 +20,15 @@ from rich.panel import Panel
 from rich.table import Table
 
 from preflight import __version__
-from preflight.core.claims import Claim, Verdict
+from preflight.core.claims import Claim, Verdict, Verification
+from preflight.core.interact import Answer, Waiver
 from preflight.core.models import Rule, Severity
 from preflight.core.registry import (
     Knowledge,
     KnowledgeLoadError,
     load_knowledge,
 )
+from preflight.core.release import WaiverRecord, build_release_review
 from preflight.core.report import (
     render_json,
     render_markdown,
@@ -36,6 +39,14 @@ from preflight.detect.derive import derive_checks
 from preflight.detect.engine import run_path
 from preflight.detect.probe import probe_mechanisms
 from preflight.detect.repo import Repo
+from preflight.interact.questions import build_questionnaire
+from preflight.interact.store import load_answers, load_waivers, save_answers, save_waivers
+from preflight.interact.waiver import (
+    apply_waivers,
+    apply_waivers_to_verifications,
+    expired_audit,
+    waiver_audit,
+)
 from preflight.runtime.budget import Budget
 from preflight.runtime.cache import ResponseCache
 from preflight.runtime.llm import (
@@ -849,6 +860,306 @@ def mechanisms_cmd(
                 f"  [dim]{check.mechanism_name} × {check.invariant_name}："
                 f"{escape('、'.join(check.checks))}[/dim]"
             )
+
+
+@app.command("review")
+def review_cmd(
+    path: Path = typer.Argument(Path("."), help="要评审的项目目录"),  # noqa: B008
+    profile: str = typer.Option("cli-oss", "--profile", "-p", help="场景档案"),
+    claims: Path | None = typer.Option(  # noqa: B008
+        None, "--claims", help="复用抽好的声明（JSON）—— 给了它就不花钱"
+    ),
+    out: Path | None = typer.Option(  # noqa: B008
+        None, "--out", "-o", help="写到文件；不给就打到终端"
+    ),
+    fail_on: str | None = typer.Option(None, "--fail-on", help="覆盖档案的门禁级别"),
+    today: str | None = typer.Option(
+        None, "--today", help="把「今天」当成这一天（YYYY-MM-DD）—— 用于复现"
+    ),
+    fmt: str = typer.Option("markdown", "--format", "-f", help="markdown / json"),
+) -> None:
+    """**一次完整的评审** —— 确定性 → 文档 → 问卷 → 报告 → 退出码。
+
+    这是这个工具最终的样子：一条命令跑完三个阶段。
+
+    ## 退出码
+
+    - ``NO-GO`` → 1
+    - ``GO`` / ``INCOMPLETE`` → 0
+
+    ``INCOMPLETE`` 返回 0 是**故意**的：它是「我还没查完」，不是「你项目有问题」。
+    拿它拦住别人的 CI 是耍流氓 —— 但它会被显著地打印出来。
+
+    ## 为什么要有 ``--today``
+
+    报告里的日期、豁免的到期判断都依赖「今天」。不给这个参数的话，
+    **同一份输入在不同日期会渲染出不同的报告** —— 那就没法复核了。
+    CI 里固定一个日期，报告才是可重建的。
+    """
+    knowledge = _load()
+    repo = Repo.scan(path)
+    moment = _parse_day(today)
+    chosen = knowledge.profiles.get(profile) or knowledge.profiles["cli-oss"]
+    gate = Severity(fail_on) if fail_on else chosen.fail_on
+
+    # ---- ① 确定性检查 ----
+    review = run_path(
+        repo.root,
+        rules=knowledge.select(chosen.id),
+        profile_id=chosen.id,
+        fail_on=gate,
+        knowledge_digest=knowledge.digest(),
+    )
+
+    # ---- ② 文档层（有 --claims 才做，因为那一步花钱）----
+    verifications: list[Verification] = []
+    docs = 0
+    if claims is not None:
+        payload = json.loads(claims.read_text(encoding="utf-8"))
+        extracted = [Claim.model_validate(item) for item in payload["claims"]]
+        docs = len(payload.get("docs", []))
+        report = verify_claims(extracted, repo, knowledge, docs=docs, profile=chosen.id)
+        verifications = report.claims
+
+    # ---- ③ 机制探测（决定该查什么）----
+    outcome = probe_mechanisms(repo, knowledge)
+
+    # ---- ④ 问卷 ----
+    waivers = load_waivers(repo.root)
+    questionnaire = build_questionnaire(
+        knowledge.questions,
+        profile=chosen.id,
+        detected=set(outcome.detected),
+        answers=load_answers(repo.root),
+    )
+
+    # ---- ⑤ 应用豁免 ----
+    waiver_result = apply_waivers(review, waivers, today=moment)
+    kept_verifications, waived_verifications = apply_waivers_to_verifications(
+        verifications, waivers, today=moment
+    )
+
+    active = waivers.active(moment)
+    records = [
+        WaiverRecord(
+            rule_id=waiver.rule_id,
+            path=waiver.path,
+            who=waiver.who,
+            why=waiver.why,
+            created=waiver.created.date().isoformat(),
+            expires=waiver.expires.isoformat(),
+            waived=[
+                item.what
+                for item in [*waiver_result.waived_findings, *waived_verifications]
+                if item.waiver is waiver
+            ],
+        )
+        for waiver in active
+    ]
+
+    release = build_release_review(
+        review,
+        today=moment,
+        profile=chosen.id,
+        tool_version=__version__,
+        verifications=kept_verifications,
+        docs=docs,
+        pending_questions=[
+            f"{question.text}　（为什么问：{question.why}）"
+            for question in questionnaire.required_pending
+        ],
+        answers=[
+            f"{answer.question_id} = {answer.value}"
+            + ("　（从文档读到的）" if answer.source == "doc" else "")
+            for answer in questionnaire.answered
+        ]
+        + [entry.describe() for entry in questionnaire.from_docs],
+        waivers=records,
+        expired_waivers=expired_audit(waivers, today=moment),
+        mechanisms=outcome.detected,
+    )
+
+    if fmt == "json":
+        _emit_raw(release.model_dump_json(indent=2))
+    else:
+        text = release.render()
+        if out is not None:
+            write_report(out, text)
+            console.print(f"[green]已写入 {_display_path(out)}[/green]")
+        else:
+            _emit_raw(text)
+
+    waived_total = len(waiver_result.waived_findings) + len(waived_verifications)
+    if waived_total:
+        console.print(f"[yellow]{waived_total} 条被豁免吃掉（记录在报告里）[/yellow]")
+
+    # 判定只由**没被豁免**的发现决定 —— 这正是豁免的用处。
+    blocking = [f for f in waiver_result.kept_findings if f.severity.rank <= gate.rank]
+    if blocking:
+        raise typer.Exit(code=1)
+
+
+@app.command("answer")
+def answer_cmd(
+    question_id: str = typer.Argument(..., help="问题 id，见 `preflight ask`"),
+    value: str = typer.Argument(..., help="答案"),
+    path: Path = typer.Option(Path("."), "--path"),  # noqa: B008
+    who: str = typer.Option("", "--who", help="谁答的（进审计记录）"),
+) -> None:
+    """回答一条必答问题。**答案落盘，第二次运行不再问。**"""
+    knowledge = _load()
+    known = {question.id for question in knowledge.questions.required} | {
+        question.id for question in knowledge.questions.extra
+    }
+    if question_id not in known:
+        console.print(f"[red]没有这个问题：{question_id}[/red]")
+        console.print(f"[dim]可选：{', '.join(sorted(known))}[/dim]")
+        raise typer.Exit(code=2)
+
+    answers = [item for item in load_answers(path) if item.question_id != question_id]
+    answers.append(
+        Answer(
+            question_id=question_id,
+            value=value,
+            who=who or None,
+            when=datetime.now(UTC),
+            source="human",
+        )
+    )
+    saved = save_answers(path, sorted(answers, key=lambda item: item.question_id))
+    console.print(f"[green]已记下 {question_id} = {value}[/green]　{_display_path(saved)}")
+
+
+@app.command("ask")
+def ask_cmd(
+    path: Path = typer.Argument(Path(".")),  # noqa: B008
+    profile: str = typer.Option("cli-oss", "--profile", "-p"),
+) -> None:
+    """看还有哪些必答问题没回答。"""
+    knowledge = _load()
+    repo = Repo.scan(path)
+    outcome = probe_mechanisms(repo, knowledge)
+    questionnaire = build_questionnaire(
+        knowledge.questions,
+        profile=profile,
+        detected=set(outcome.detected),
+        answers=load_answers(path),
+    )
+
+    console.print(questionnaire.summary_line())
+    console.print()
+
+    if questionnaire.required_pending:
+        console.print(f"[yellow]必答（{len(questionnaire.required_pending)} 条）[/yellow]")
+        for question in questionnaire.required_pending:
+            console.print(f"  [cyan]{question.id}[/cyan]　{escape(question.text)}")
+            for option in question.options:
+                console.print(f"      [dim]· {escape(option)}[/dim]")
+            console.print(f"      [dim]为什么问：{escape(question.why)}[/dim]")
+            console.print(f"      [dim]会改变什么：{escape(question.effect)}[/dim]")
+    else:
+        console.print("[green]必答的都答完了。[/green]")
+
+    optional = [item for item in questionnaire.pending if not item.required]
+    if optional:
+        console.print()
+        console.print(f"[dim]按档案展开的（{len(optional)} 条，可选）[/dim]")
+        for question in optional:
+            console.print(f"  [dim]{question.id}　{escape(question.text)}[/dim]")
+
+    if questionnaire.from_docs:
+        console.print()
+        console.print(f"[dim]{len(questionnaire.from_docs)} 条文档里已经说了，不用问：[/dim]")
+        for entry in questionnaire.from_docs:
+            console.print(f"  [dim]{escape(entry.describe())}[/dim]")
+
+
+@app.command("waive")
+def waive_cmd(
+    rule_id: str = typer.Argument(..., help="规则 id"),
+    path: Path = typer.Option(Path("."), "--path"),  # noqa: B008
+    who: str = typer.Option(..., "--who", help="谁批的（必填 —— 审计记录）"),
+    why: str = typer.Option(..., "--why", help="为什么（必填 —— 审计记录）"),
+    expires: str = typer.Option(..., "--expires", help="到期日 YYYY-MM-DD（必填）"),
+    scope: str | None = typer.Option(None, "--scope", help="只在某个文件上豁免；不给就是全仓库"),
+) -> None:
+    """豁免一条规则。
+
+    ## 四样缺一不可：谁 / 何时 / 为什么 / 到期
+
+    因为没有这四样的豁免，就是一个**「这条我们不管了」的口头决定** ——
+    它会一直生效到某天有人想起来为止，而那时已经没人记得为什么。
+
+    到期之后**自动失效**，问题原样报回来。
+    """
+    knowledge = _load()
+    if rule_id not in knowledge.rules:
+        console.print(f"[red]没有这条规则：{rule_id}[/red]")
+        raise typer.Exit(code=2)
+
+    try:
+        deadline = date.fromisoformat(expires)
+    except ValueError:
+        console.print(f"[red]到期日格式不对：{expires}（要 YYYY-MM-DD）[/red]")
+        raise typer.Exit(code=2) from None
+
+    if deadline <= date.today():
+        console.print("[red]到期日不能是过去或今天 —— 那等于没豁免。[/red]")
+        raise typer.Exit(code=2)
+
+    waivers = load_waivers(path)
+    waivers.waivers.append(
+        Waiver(
+            rule_id=rule_id,
+            path=scope,
+            who=who,
+            why=why,
+            expires=deadline,
+            created=datetime.now(UTC),
+        )
+    )
+    saved = save_waivers(path, waivers)
+    console.print(
+        f"[green]已豁免 {rule_id}（{scope or '全仓库'}）到 {deadline}[/green]"
+        f"　{_display_path(saved)}"
+    )
+
+
+@app.command("waivers")
+def waivers_cmd(
+    path: Path = typer.Argument(Path(".")),  # noqa: B008
+) -> None:
+    """**豁免审计** —— 列出所有未过期的豁免。
+
+    豁免是一个**权力**，而任何权力都需要能被审计 ——
+    否则它会变成「有些人可以不走流程」。
+    """
+    waivers = load_waivers(path)
+    active = waiver_audit(waivers)
+    expired = expired_audit(waivers)
+
+    if active:
+        console.print(f"[cyan]生效中的豁免（{len(active)} 条）[/cyan]")
+        for line in active:
+            console.print(f"  · {escape(line)}")
+    else:
+        console.print("[dim]没有生效中的豁免。[/dim]")
+
+    if expired:
+        console.print()
+        console.print(f"[yellow]已过期（{len(expired)} 条）—— 问题已经回到报告里[/yellow]")
+        for line in expired:
+            console.print(f"  · {escape(line)}")
+
+
+def _parse_day(text: str | None) -> date:
+    if text is None:
+        return date.today()
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        console.print(f"[red]日期格式不对：{text}（要 YYYY-MM-DD）[/red]")
+        raise typer.Exit(code=2) from None
 
 
 def main() -> None:

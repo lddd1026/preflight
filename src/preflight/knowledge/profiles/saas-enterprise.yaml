@@ -1,0 +1,25 @@
+id: saas-enterprise
+name: SaaS · 面向企业
+description: |
+  多租户、面向企业客户的在线服务。**这是四个档案里门禁最严的一个。**
+
+  企业客户带来的额外要求，每一条都会真的改变检查项：
+
+  - **审计**：客户会问"谁能接触我的数据、有留痕吗"
+  - **隔离**：一次越权就是一次合同违约，不是一次 bug
+  - **合规**：数据驻留、导出、删除权（被遗忘权）
+  - **采购**：渗透测试报告、SLA、安全问卷 —— 这些不在自动检查范围内，
+    但**必须出现在报告的待签核清单里**
+
+  所以门禁是 ``medium``，而且问卷会比别的档案多几条（见
+  ``knowledge/questions/questions.yaml`` 的 ``extra``）。
+applies_to: software
+audience: enterprise
+fail_on: medium
+include:
+  # 企业客户几乎一定会问"你这服务里的 AI 功能会不会超支 / 会不会挂死"——
+  # 所以整个 agent 模型调用组都拉进来（同样是零代价：不调模型就不报）。
+  - agent/no-request-timeout
+  - agent/no-output-limit
+  - agent/cost-from-price-table
+  - agent/model-name-scattered

@@ -1,0 +1,29 @@
+id: saas-consumer
+name: SaaS · 面向消费者
+description: |
+  多租户、面向 C 端用户的在线服务。
+
+  和 ``cli-oss`` 的差别不是"更严"这么简单，而是**风险的方向变了**：
+
+  - CLI 工具出事，用户自己能重试；SaaS 出事，用户的数据在你这儿
+  - CLI 工具没有"别人的数据"这个概念；SaaS 有 —— 而且越权是**静默的**
+  - C 端用户量大、流失快，一次事故的代价是不可逆的
+
+  所以门禁升到 ``medium``：不是我们更悲观，是这个形态下
+  "中危"的期望损失已经不低了。
+applies_to: software
+audience: customer
+fail_on: medium
+include:
+  # ⚠️ 这两条**必须真的跨边界**才有意义。
+  #
+  # 第一版这里写了 `general/config-name-drift` —— 那是个**空操作**：
+  # 它本来就是 `applies_to: both`，早就被选中了。**死数据比没有更糟**，
+  # 因为它看起来像"这个档案有额外要求"，实际什么都没做。
+  #
+  # 现在拉的是两条真正跨 `applies_to` 边界的 agent 规则。
+  # 为什么 SaaS 档案要拉 agent 规则：**现在的 SaaS 里带一个 LLM 功能
+  # 几乎是默认情况**。而不调用模型的项目，这两条**什么都不会报** ——
+  # 所以拉进来的代价是零。
+  - agent/no-request-timeout
+  - agent/no-output-limit

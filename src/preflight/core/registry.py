@@ -40,6 +40,7 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from preflight.core.claims import ClaimMarkers, DocRoleTable, VerificationTable
+from preflight.core.interact import QuestionTable
 from preflight.core.models import (
     AppliesTo,
     Audience,
@@ -149,6 +150,8 @@ class Knowledge:
     doc_roles: DocRoleTable = field(default_factory=_empty_doc_roles)
     #: 声明 → 验证策略的映射表（``knowledge/claims/verification.yaml``）
     verification: VerificationTable = field(default_factory=VerificationTable)
+    #: 人工问卷（``knowledge/questions/questions.yaml``）
+    questions: QuestionTable = field(default_factory=QuestionTable)
 
     # ---- 查询 ----
 
@@ -294,6 +297,8 @@ def load_knowledge(
     errors.extend(doc_errors)
     verification, verify_errors = _load_verification(roots)
     errors.extend(verify_errors)
+    questions, question_errors = _load_one_table(roots, _QUESTIONS_RELATIVE, QuestionTable)
+    errors.extend(question_errors)
     if errors:
         raise KnowledgeLoadError(errors)
 
@@ -305,6 +310,7 @@ def load_knowledge(
         sources=sources,
         doc_roles=doc_roles,
         verification=verification,
+        questions=questions or QuestionTable(),
     )
 
     cross_errors = _validate_cross_references(knowledge)
@@ -316,6 +322,7 @@ def load_knowledge(
 
 _DOC_ROLES_RELATIVE = Path("docs") / "roles.yaml"
 _VERIFICATION_RELATIVE = Path("claims") / "verification.yaml"
+_QUESTIONS_RELATIVE = Path("questions") / "questions.yaml"
 
 
 def _load_one_table(

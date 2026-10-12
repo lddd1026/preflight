@@ -105,7 +105,7 @@ def test_rules_table_has_no_zero_width_column() -> None:
 
     现在收敛成三列。这条测试守住"不许再出现零宽列"。
     """
-    for profile in (None, "cli-oss", "agent-enterprise", "software-with-llm"):
+    for profile in (None, "cli-oss", "agent-enterprise", "saas-consumer", "saas-enterprise"):
         args = ["list-rules"] + (["--profile", profile] if profile else [])
         result = runner.invoke(app, args)
         assert result.exit_code == 0, result.stdout
