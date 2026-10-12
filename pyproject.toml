@@ -4,20 +4,22 @@ build-backend = "hatchling.build"
 
 [project]
 name = "preflight-check"
-version = "0.0.1"
+version = "1.0.0"
 description = "上线前的自动评审：把自动检查、文档漂移和人工签核收拢成一次运行"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
+authors = [{ name = "刘达", email = "1036179451@qq.com" }]
 keywords = ["release", "readiness", "preflight", "agent", "lint", "review"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Quality Assurance",
+    "Typing :: Typed",
 ]
 
 # 依赖克制：能不加就不加。
@@ -79,8 +81,26 @@ llm = [
 [project.scripts]
 preflight = "preflight.cli:main"
 
+# ⚠️ 这一段的位置**必须**在所有 `[project.*]` 标量之后。
+#
+# 我在这里踩了两次，都是同一个原因 —— **TOML 的表头会吞掉它后面的一切**：
+#
+# 1. 把它放在别处，和已有的一条 `[project.urls]` 重复了 →
+#    `pip install .` 报 `Cannot declare ('project', 'urls') twice`
+# 2. 把它放在 `classifiers` 和 `dependencies` 之间 →
+#    `dependencies` 被当成了 `[project.urls]` 里的一个键 →
+#    `TypeError: URL 'dependencies' of field 'project.urls' must be a string`
+#
+# **两次都只在"干净环境"里暴露** —— 本地 `pip install -e .` 用的是
+# 已经装好的环境，根本不重新读 pyproject。
+#
+# 真正守住它的是 `tests/test_release.py` 里那条**真的构建一次 wheel** 的测试，
+# 和 `tests/test_workflows.py` 里读 pyproject 的那几条。
 [project.urls]
+Homepage = "https://github.com/lddd1026/preflight"
 Repository = "https://github.com/lddd1026/preflight"
+Issues = "https://github.com/lddd1026/preflight/issues"
+Changelog = "https://github.com/lddd1026/preflight/blob/main/docs/PROGRESS.md"
 
 [tool.hatch.build.targets.wheel]
 # `packages` 会把 `src/preflight/` 下的**所有文件**打进 wheel ——

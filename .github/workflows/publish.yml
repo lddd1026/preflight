@@ -1,0 +1,83 @@
+name: publish
+
+# 打 tag 就发布 —— **不需要任何 token**。
+#
+# ## 为什么用可信发布（Trusted Publishing）而不是 API token
+#
+# 一个存在 GitHub Secrets 里的 PyPI token 是一个**长期凭证**：
+# 它不会过期、泄漏了很难发现、而且它能发布的包不止这一个。
+#
+# 可信发布走的是 OIDC：GitHub 临时签一个短命的身份断言，
+# PyPI 校验"这次上传确实来自这个仓库的这个工作流"。
+# 结果是**没有可以泄漏的秘密**，而且 PyPI 页面上会显示构建来源
+# （attestation），别人能验证这个包是从哪段代码构建出来的。
+#
+# 要启用它，先在 PyPI 的项目设置里加上：
+#     Owner: lddd1026    Repository: preflight
+#     Workflow: publish.yml    Environment: pypi
+#
+# ## 为什么先跑一遍测试
+#
+# 发布是不可逆的：PyPI 上的一个版本号不能被复用，删掉也没用
+# （别人已经装了）。所以这个工作流**先跑 check，绿了才发布**。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  # ⚠️ 复用 ci.yml 的那套检查，而不是重写一遍 ——
+  # 两份定义会漂移，而漂移之后"发布前跑了什么"就成了一个问题。
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: 构建 sdist 和 wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+
+      # 这一步**必须**在发布前跑：twine check 会告诉你
+      # README 在 PyPI 上渲染会不会报错、元数据是不是合法。
+      # 而这两件事在上传之后才发现就晚了 —— 版本号已经用掉了。
+      - name: 校验元数据和 README 渲染
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check dist/*
+
+      # 让"包里到底有什么"在 CI 日志里可见 —— 出问题时不用重新构建
+      - name: 列出 wheel 内容
+        run: python -m zipfile --list dist/*.whl | head -40
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # ⚠️ environment 是**人在回路**的那一步：在 GitHub 上把它配成需要
+    # 人工批准，于是一次误打的 tag 也不会直接推到 PyPI。
+    environment: pypi
+    permissions:
+      # 这两项是可信发布的要求：id-token 用来签 OIDC 断言，
+      # attestations 让 PyPI 能把构建来源写进 provenance。
+      id-token: write
+      attestations: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1

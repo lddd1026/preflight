@@ -1,9 +1,17 @@
 # preflight
 
+[![ci](https://github.com/lddd1026/preflight/actions/workflows/ci.yml/badge.svg)](https://github.com/lddd1026/preflight/actions/workflows/ci.yml)
+[![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 **上线前的自动评审。**
 
 > CI 告诉你「测试通过了没有」。
 > `preflight` 告诉你「**该做的测试有没有被做过**」。
+
+> ⚠️ **CI 徽章目前是灰的** —— 这个仓库还没推到 GitHub，所以工作流一次都没跑过。
+> 推上去之后它会自己变绿（或者变红，那正是我们要知道的）。
+> 在那之前，下面的数字来自**本地 + Linux 容器**的验证，不是 CI。
 
 ---
 

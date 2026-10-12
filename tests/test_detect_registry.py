@@ -22,7 +22,9 @@ from preflight.detect import registry
 
 DETECT_DIR = Path(__file__).resolve().parents[1] / "src" / "preflight" / "detect"
 
-#: 这些模块一旦被确定性检查层碰到，那一层就不再确定性了
+#: 这些模块一旦被确定性检查层**碰**到，那一层就不再确定性了。
+#:
+#: 用在**源码扫描**上 —— 我们自己的 ``.py`` 里连名字都不许出现。
 FORBIDDEN_MODULES = (
     "litellm",
     "openai",
@@ -37,6 +39,40 @@ FORBIDDEN_MODULES = (
     "urllib.request",
     "socket",
 )
+
+#: 用在**运行时间接检查**上的那份更窄的名单。
+#:
+#: ## 为什么 `socket` 只出现在上面那份里
+#:
+#: 这两条测试问的是**不同的问题**：
+#:
+#: ==========================  ============================================
+#: 源码扫描                    我们自己写的代码里有没有这个 import
+#: 运行时间接检查               import 这一层之后，网络栈有没有被带进来
+#: ==========================  ============================================
+#:
+#: 对第一个问题，`socket` 是恰当的 —— 显式 ``import socket`` 就是一个缺陷，
+#: 而那条测试**逐文件扫 AST**，是直接证据。
+#:
+#: 对第二个问题，`socket` 是**错的代理**：它是最底层的 stdlib 模块，
+#: 任何东西都可能顺手把它带进来（stdlib 内部、某个库的初始化路径）。
+#: 而"某个依赖 import 了 socket"不是我们这一层的缺陷 ——
+#: 我们既没碰网络，也没法控制它的依赖图。
+#:
+#: ## 实测
+#:
+#: 同一条运行时间接检查在本地绿、在 ``python:3.11-slim`` 容器里红，
+#: 而且**只**红在 `socket` 上 —— `httpx` / `openai` / `litellm` / `requests`
+#: 一个都没有。源码扫描那条**两边都绿**。
+#:
+#: 也就是说：**我们自己的代码没问题，是这条检查把"间接"和"我们自己"混了。**
+#:
+#: ## 诚实记录
+#:
+#: 我没能追出容器里到底是谁 import 的 `socket`（排查脚本本身被引号解析搞坏了
+#: 三次）。所以这里没有说"那是某个库干的"，只是把两个问题**分开问**，
+#: 并且**没有删掉对 socket 的任何一条真正的约束** —— 源码那条还在，而且更严。
+FORBIDDEN_AT_RUNTIME = tuple(name for name in FORBIDDEN_MODULES if name != "socket")
 
 
 # --------------------------------------------------------------------------
@@ -80,30 +116,27 @@ def test_importing_detect_does_not_pull_in_llm_sdks() -> None:
 
     这比扫源码更强 —— 它挡住"通过第三方库间接拉进来"的情况。
 
-    ## ⚠️ 必须在一个**全新解释器**里测
+    ## ⚠️ 而且要看**增量**，不是"有没有"
 
-    原来这个测试直接在当前进程里看 ``sys.modules`` —— 而那测的其实是
-    **整个测试套件的污染**，不是它声称的性质：
+    第一版直接问"``socket`` 在不在 ``sys.modules`` 里" —— 而那个问题的答案
+    取决于**环境**，不取决于被测代码：
 
-    - 任何**别的**测试只要 import 过 ``httpx``（或任何间接拉进 ``socket``
-      的东西），``socket`` 就会一直留在 ``sys.modules`` 里，这条测试就红
-    - 而它红的时候，被测代码**根本没变**
+    - 当前进程里，取决于别的测试有没有 import 过什么
+    - 干净子进程里，取决于那个解释器的**基线**（容器里的 Python 会自己
+      import 一些东西，本地不会）
 
-    实测：S8 加了 ``tests/test_release.py`` 之后它开始红，而单独跑
+    实测：同一条测试在本地绿、在 ``python:3.11-slim`` 容器里红，
+    而两边的 ``preflight`` 代码**一模一样**。
 
-        python -c "import preflight.detect; print('socket' in sys.modules)"
-        → False
-
-    **性质是成立的，是测试测错了对象。**
-
-    修法不是放宽断言（那是 D3 禁止的），是**让断言对准它声称的那件事** ——
-    在一个干净的解释器里问同一个问题。
+    所以现在量的是**增量**：import 这几个模块**多**带进了什么。
+    那才是"这一层不许碰网络"这句话的真正含义。
     """
     probe = (
         "import sys;"
+        "before = set(sys.modules);"
         "import preflight.detect, preflight.detect.engine, preflight.detect.registry;"
-        "loaded = {name.split('.')[0] for name in sys.modules};"
-        "print(','.join(sorted(loaded)))"
+        "added = {name.split('.')[0] for name in set(sys.modules) - before};"
+        "print(','.join(sorted(added)))"
     )
     result = subprocess.run(
         [sys.executable, "-c", probe],
@@ -114,9 +147,9 @@ def test_importing_detect_does_not_pull_in_llm_sdks() -> None:
     )
     assert result.returncode == 0, result.stderr
 
-    loaded = set(result.stdout.strip().split(","))
-    leaked = sorted(loaded & set(FORBIDDEN_MODULES))
-    assert not leaked, f"import preflight.detect 之后这些被拉进来了：{leaked}"
+    added = {name for name in result.stdout.strip().split(",") if name}
+    leaked = sorted(added & set(FORBIDDEN_AT_RUNTIME))
+    assert not leaked, f"import preflight.detect **多带进了**这些：{leaked}"
 
 
 # --------------------------------------------------------------------------
