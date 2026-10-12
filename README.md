@@ -335,7 +335,7 @@ pip install -e ".[dev,tools]"         # 装 pip-audit + ruff
 | S8 | 打包发布（Docker + 离线 demo + 文档一致性） | ⚠️ 干净容器验证过；**未发布 PyPI**（缺凭证） |
 | S9 | 短文：[我踩过的坑](docs/PITFALLS.md) | ✅ 18 条血案 |
 
-**当前规模**：74 个 Python 文件 · **543 passed + 3 skipped** ·
+**当前规模**：74 个 Python 文件 · **544 passed + 3 skipped** ·
 语料 29 条规则 / **10 个机制（48 格）** / 6 条不变量 / **4 个档案** /
 5 条必答 + 4 条条件展开 · Docker 镜像可跑 · mypy 全绿。
 
@@ -376,6 +376,7 @@ pip install -e ".[dev,tools]"         # 装 pip-audit + ruff
 
 | 文档 | 内容 |
 | --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | **模块划分与扩展指南**：想加功能该动哪一块 |
 | [docs/STATUS.md](docs/STATUS.md) | **状态快照**：现在是什么状态，卡在哪 |
 | [docs/OVERVIEW.md](docs/OVERVIEW.md) | 项目详细介绍：做什么、为什么、边界 |
 | [docs/PLAN.md](docs/PLAN.md) | 模块划分与 9 个阶段的开发计划 |

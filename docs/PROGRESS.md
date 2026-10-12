@@ -27,7 +27,7 @@
 | **当前阶段** | **S0–S8 全部达标**；发布待定（名字冲突 + 无凭证 + 3.12 未验证） |
 | **已完成阶段** | **9 / 9**（S0–S8，其中 S8 的 PF-48 未做） |
 | **可发布版本** | **v1.0.0** —— 版本号已定、wheel 能构建、干净容器能跑；**但还没推到 PyPI** |
-| **测试总数** | **543 + 3**（Windows/3.13）· **541 + 5**（Linux/3.11）· **541 + 5**（Linux/3.12） |
+| **测试总数** | **544 + 3**（Windows/3.13）· **541 + 5**（Linux/3.11）· **541 + 5**（Linux/3.12） |
 | **语料** | 29 条规则 · 10 个机制（48 格）· 6 条不变量 · 4 个档案 · 5 条必答 + 4 条条件展开 |
 | **最后更新** | 2026-10-11（验证模块化与可扩展性 + 补跑 3.12） |
 
@@ -1999,7 +1999,7 @@ ModuleNotFoundError: No module named 'preflight'   ← 不再撞车 ✓
 
 ```
 $ python -m pytest
-543 passed, 3 skipped
+544 passed, 3 skipped
 $ docker run --rm preflight-check
 preflight demo　档案 agent-enterprise　（零 LLM、零联网）
 🔴 broken-agent　15 条发现（agent 专项 14 条）　判定 NO-GO

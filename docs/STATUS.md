@@ -40,7 +40,7 @@
 
 | 组合 | 结果 |
 | --- | --- |
-| **Windows / Python 3.13**（本地） | ✅ **543 passed + 3 skipped** |
+| **Windows / Python 3.13**（本地） | ✅ **544 passed + 3 skipped** |
 | **Linux / Python 3.11**（容器） | ✅ **541 + 5 skipped** |
 | **Linux / Python 3.12**（容器） | ✅ **541 + 5 skipped** ← **第一次跑** |
 | Windows / 3.11 | ❌ 没跑过（本机没有这个 Python） |
@@ -279,6 +279,7 @@ all `preflight`」），而两者目标用户完全重叠 —— 同时安装会
 
 | 文档 | 内容 |
 | --- | --- |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | **模块划分与扩展指南** —— 想加功能该动哪一块 |
 | [OVERVIEW.md](OVERVIEW.md) | 项目详细介绍：做什么、为什么、边界在哪 |
 | [PLAN.md](PLAN.md) | 模块划分与九个阶段的计划、每阶段的验收标准 |
 | [KNOWLEDGE.md](KNOWLEDGE.md) | 知识本体：10 机制 × 6 不变量的矩阵 |
