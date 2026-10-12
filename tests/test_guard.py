@@ -22,9 +22,9 @@ from pathlib import Path
 
 import pytest
 
-from preflight.core.claims import Evidence
-from preflight.detect.repo import Repo
-from preflight.understand import guard
+from preflight_check.core.claims import Evidence
+from preflight_check.detect.repo import Repo
+from preflight_check.understand import guard
 from sample_knowledge import write_knowledge
 
 #: ⚠️ 这必须是**合法 Python** —— 第一版写的是 `line one` / `line two`，

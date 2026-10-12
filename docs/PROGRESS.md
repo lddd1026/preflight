@@ -243,7 +243,7 @@ severity: 严重的   →   Error: severity / Input should be 'blocker', 'high',
 **⑤ 退出标准：加一条规则只写 YAML，不改代码（纪律 D4）**
 
 ```
-$ preflight list-rules          # 加完 YAML 之后
+$ preflight-check list-rules          # 加完 YAML 之后
 全部规则（4 条）
 │ blocker │ general/env-not-ignored │ both │
 
@@ -318,7 +318,7 @@ pydantic 会把出错的**整个输入**塞进 `detail["input"]`。对「缺字�
 | 4 | 只有 **3/10** 个机制数据化 | 矩阵只有 18 格（3×6），实际应约 40 格 | S6（PF-36）补全 |
 | 5 | 只有 **4 条**规则（通用 2 + agent 1 + 矩阵 1） | 离 23 条（v0.1）还差 19 条 | S1 补通用规则，S3 补 agent 规则 |
 | 6 | `DETECT_REQUIRED_PARAMS` 是**暂定值** | 真正的检测器还没实现，参数表可能不准 | S1/S2 实现检测器时校准 |
-| 7 | `Review` / `Finding` 模型有了，但没有引擎产生它们 | 现在只有模型和测试，没有 `preflight run` | S1 |
+| 7 | `Review` / `Finding` 模型有了，但没有引擎产生它们 | 现在只有模型和测试，没有 `preflight-check run` | S1 |
 | 8 | 检测器接口（`Detector` 基类）还没写 | PF-7 属于 S1 | S1 |
 
 ### 文档更新检查
@@ -388,7 +388,7 @@ pydantic 会把出错的**整个输入**塞进 `detail["input"]`。对「缺字�
 | PF-7 | `Detector` 接口 + 三个实现 | [x] | `detect/base.py`（CheckContext）+ `generic.py`（exists/text）+ 7 个具名 checker |
 | PF-8 | 通用规则 11 条 | [x] | 11 条全部落地（S1 新增 9 条） |
 | PF-9 | 报告渲染（终端 + Markdown + JSON） | [x] | `core/report.py` |
-| PF-10 | `preflight run <path>` 端到端 | [x] | 含退出码门禁、`--format`、`--out`、`--full` |
+| PF-10 | `preflight-check run <path>` 端到端 | [x] | 含退出码门禁、`--format`、`--out`、`--full` |
 
 **额外做掉的（原排 S3，S1 就需要）：**
 
@@ -685,7 +685,7 @@ preflight 自己的 `test_acceptance_s1.py` 因为名字里有 "acceptance"
 
 #### 缺陷七：preflight 用真实 ruff 在自己身上查出 2 个真问题
 
-这是**最好的 dogfooding 结果**：`preflight run .` 报出
+这是**最好的 dogfooding 结果**：`preflight-check run .` 报出
 
 ```
 tests/test_adapters.py:31  F401：`CheckerSkipped` imported but unused
@@ -786,7 +786,7 @@ agent 规则: 14 条
 **自己造的夹具容易"正好长成规则的样子"**，所以还要在一个真实的、
 别人写的项目上跑一遍。
 
-**④ 自身评审（dogfooding）** —— `preflight run . -p agent-enterprise`
+**④ 自身评审（dogfooding）** —— `preflight-check run . -p agent-enterprise`
 在 preflight 自己身上只剩 **3 条**发现，全是真实缺口：
 
 ```
@@ -1234,7 +1234,7 @@ JSON 被砍掉一半 → `json.loads` 失败 → **那一整份文档的 27 条�
 
 - [x] PLAN.md：S4 标 ✅ 与偏差
 - [x] PROGRESS.md：本章节
-- [x] README.md：状态、`[llm]` 安装、`preflight docs` / `claims`
+- [x] README.md：状态、`[llm]` 安装、`preflight-check docs` / `claims`
 - [x] `tests/ground_truth/fivewhys_labels.yaml`：人工基准 + 抽样方法 + 判定过的键
 - [ ] RULES.md / KNOWLEDGE.md：本阶段没有新增检测规则，无需改动
 
@@ -1253,12 +1253,12 @@ JSON 被砍掉一半 → `json.loads` 失败 → **那一整份文档的 27 条�
 | PF-28 | 声明 → 验证策略映射（确定性优先） | [x] | `understand/mapping.py` + `knowledge/claims/verification.yaml`（**映射表是数据**） |
 | PF-29 | 验证器：四类 | [x] | `understand/verify.py`：existence / quantity / constraint+behavior（跑已有规则） |
 | PF-30 | **防幻觉核对器** | [x] | `understand/guard.py`：路径 / 行号 / 片段 / 符号，**逐字段核对** |
-| PF-31 | 漂移报告 + 文档兑现率 | [x] | `preflight verify`；fivewhys 上跑出真实数字（见下） |
+| PF-31 | 漂移报告 + 文档兑现率 | [x] | `preflight-check verify`；fivewhys 上跑出真实数字（见下） |
 | PF-32 | `constraint` 的诚实处理 | [x] | 没有对应检查器时报 ⚠️「无法证明否定」，**不报 ✅** |
 
 **新增**：`understand/guard.py`、`understand/mapping.py`、`understand/verify.py`、
 `knowledge/claims/verification.yaml`、`core/claims.py` 的核对数据形状、
-`preflight verify` 命令。
+`preflight-check verify` 命令。
 
 ### ⭐ 真实数字：文档兑现率
 
@@ -1429,7 +1429,7 @@ fivewhys 的评审文档写「子包齐全（`agent/` `mock/injectors/` `tools/`
 | --- | --- | --- | --- |
 | 1 | **新增"符号缺失是弱证据"这条分寸** | 符号是从散文里猜的，路径是精确的。混在一起用会制造假漂移 | 只有路径缺失才判漂移 |
 | 2 | **计数目标加 `exact` 标记** | 口径不一致时"对不上"有太多无辜的解释 | 不精确时只报"查不了" |
-| 3 | **`preflight verify --claims`** | 核对不花钱，抽取花钱。分开之后可以反复调规则而不用重新抽取 | 复用 S4 的结果 |
+| 3 | **`preflight-check verify --claims`** | 核对不花钱，抽取花钱。分开之后可以反复调规则而不用重新抽取 | 复用 S4 的结果 |
 | 4 | **兑现率的分母只含"真的能查的"** | 把"我没能力判断"算进分母，兑现率会被一批和文档质量无关的东西拉低 | 查不了的数量单独报 |
 
 ### 遗留问题
@@ -1447,7 +1447,7 @@ fivewhys 的评审文档写「子包齐全（`agent/` `mock/injectors/` `tools/`
 
 - [x] PLAN.md：S5 标 ✅ 与偏差
 - [x] PROGRESS.md：本章节
-- [x] README.md：状态、`preflight verify`
+- [x] README.md：状态、`preflight-check verify`
 - [ ] RULES.md / KNOWLEDGE.md：本阶段没有新增检测规则，无需改动
 
 ---
@@ -1469,7 +1469,7 @@ fivewhys 的评审文档写「子包齐全（`agent/` `mock/injectors/` `tools/`
 | PF-37 | 探测失败时的诚实兜底 | [x] | 报「一个都没探测到」+ **按不变量问的问卷** |
 
 **新增**：`detect/probe.py`、`detect/derive.py`、7 个机制 YAML、
-`MechanismCell` 模型、`preflight mechanisms` 命令。
+`MechanismCell` 模型、`preflight-check mechanisms` 命令。
 
 ### 阶段测试结果
 
@@ -1599,7 +1599,7 @@ preflight 自己的 `docs/KNOWLEDGE.md` 里有一张讲机制的表格，里面�
 | --- | --- | --- | --- |
 | 1 | **新增"仅弱线索不算探测到"这条判据** | 文档提到一个机制 ≠ 用了它；符号名会撞车 | 弱线索进 `uncertain` |
 | 2 | **`MechanismCell` 进模型，而不只是文档** | PLAN 说"矩阵数据化"—— 那就得让格子成为**可加载、可校验**的数据 | 交叉引用校验跟着一起做 |
-| 3 | **`preflight mechanisms` 支持 `--full`** | 推理链很长，默认只打前 6 条 | 全部可见但不刷屏 |
+| 3 | **`preflight-check mechanisms` 支持 `--full`** | 推理链很长，默认只打前 6 条 | 全部可见但不刷屏 |
 
 ### 遗留问题
 
@@ -1615,7 +1615,7 @@ preflight 自己的 `docs/KNOWLEDGE.md` 里有一张讲机制的表格，里面�
 
 - [x] PLAN.md：S6 标 ✅ 与偏差
 - [x] PROGRESS.md：本章节
-- [x] README.md：状态、`preflight mechanisms`
+- [x] README.md：状态、`preflight-check mechanisms`
 - [x] KNOWLEDGE.md 的矩阵**已经数据化**进 `knowledge/mechanisms/*.yaml`
 
 ---
@@ -1634,12 +1634,12 @@ preflight 自己的 `docs/KNOWLEDGE.md` 里有一张讲机制的表格，里面�
 | PF-39 | 答案落盘（可复用） | [x] | `.preflight/answers.yaml`，**跟着仓库走版本控制** |
 | PF-40 | **豁免机制**：谁 / 何时 / 为什么 / 到期 | [x] | `interact/waiver.py` + `.preflight/waivers.yaml` |
 | PF-41 | `RELEASE_REVIEW.md` 生成器 | [x] | `core/release.py`：五段式，按 [RULES.md](RULES.md) 的格式 |
-| PF-42 | 退出码约定 + `--fail-on` | [x] | `preflight review`；**豁免之后退出码真的会变 0** |
+| PF-42 | 退出码约定 + `--fail-on` | [x] | `preflight-check review`；**豁免之后退出码真的会变 0** |
 | PF-43 | 四个 profile | [x] | `cli-oss` / `saas-consumer` / `saas-enterprise` / `agent-enterprise` |
 
 **新增**：`interact/`（questions / store / waiver）、`core/interact.py`、
 `core/release.py`、`knowledge/questions/questions.yaml`、
-两个新档案、`preflight review` / `ask` / `answer` / `waive` / `waivers` 五个命令。
+两个新档案、`preflight-check review` / `ask` / `answer` / `waive` / `waivers` 五个命令。
 
 ### ⭐ 阶段测试结果（PLAN 的六条，逐条对照）
 
@@ -1652,7 +1652,7 @@ preflight 自己的 `docs/KNOWLEDGE.md` 里有一张讲机制的表格，里面�
 === 类型检查 (mypy) ===         -> 通过    Success: no issues found in 44 source files
 ```
 
-**② 端到端跑完一次评审** —— `preflight review . --today 2026-10-11`
+**② 端到端跑完一次评审** —— `preflight-check review . --today 2026-10-11`
 走完「确定性 → 文档 → 问卷 → 报告 → 退出码」，输出一份完整报告。
 （在 preflight 自己身上跑的结果见下。）
 
@@ -1663,7 +1663,7 @@ preflight 自己的 `docs/KNOWLEDGE.md` 里有一张讲机制的表格，里面�
 ``general/hardcoded-secret`` 被豁免后那条从发现里消失，
 报告里出现 `| 规则 | 谁 | 何时 | 为什么 | 到期 |` 那一行。
 
-**⑤ 豁免审计** —— `preflight waivers` 列出所有未过期的，
+**⑤ 豁免审计** —— `preflight-check waivers` 列出所有未过期的，
 并把**已过期的**单独列出来（它们已经不生效，问题回到了报告里）。
 
 **⑥ 报告可重建** —— `model_dump_json()` → `model_validate_json()` →
@@ -1699,7 +1699,7 @@ assert len(table.required) == 5
 ### 真实运行：在 preflight 自己身上
 
 ```
-$ preflight review . --today 2026-10-11
+$ preflight-check review . --today 2026-10-11
 
 # RELEASE_REVIEW
 日期：2026-10-11　profile：cli-oss　探测到的机制：llm-call　preflight：0.0.1
@@ -1784,7 +1784,7 @@ $ preflight review . --today 2026-10-11
 
 - [x] PLAN.md：S7 标 ✅ 与偏差
 - [x] PROGRESS.md：本章节
-- [x] README.md：状态、`preflight review` / `waive` / `ask`
+- [x] README.md：状态、`preflight-check review` / `waive` / `ask`
 - [ ] RULES.md：报告格式那一段本来就是照它实现的，无需改
 
 ---
@@ -1897,7 +1897,7 @@ YAML 语法对不对、矩阵和 `requires-python` 一不一致、
 | `test_publish_workflow_uses_trusted_publishing` | 守 `id-token: write` —— 删掉之后的表现是发布时报一个难懂的权限错 |
 | `test_publish_workflow_checks_metadata_before_uploading` | 上传前必须 `twine check` —— 发到 PyPI **不可逆** |
 | `test_console_script_name_is_the_one_documented` | 命令名是用户唯一会手打的东西 |
-| `test_version_is_declared_in_exactly_two_places` | 两处不一致时 `preflight version` 会误导人 |
+| `test_version_is_declared_in_exactly_two_places` | 两处不一致时 `preflight-check version` 会误导人 |
 
 **其中一条自己也错了一次**：YAML 1.1 里裸键 `on` 是**布尔真**，
 PyYAML 读出来是 `{True: ...}` —— `assert "on" in loaded` 因此在两个工作流上都红了。
@@ -1943,6 +1943,67 @@ PyYAML 读出来是 `{True: ...}` —— `assert "on" in loaded` 因此在两个
 > **开发时用的是源码目录和已装好的环境，而用户拿到的是构建产物。**
 > 唯一的解药是真的构建一次、真的去干净环境里装一次 —— 而那正是 CI 的位置。
 
+### 补充轮次（round 13）：**改名** —— 冲突真的消除了
+
+**这一轮不再等答复**，理由是 PLAN 自己写了修法：PF-47 的验收标准是
+「未被占用**或改名**」—— 名字被占了，那就改名。
+
+**改的不是分发名，是导入包名和命令名**（分发名 `preflight-check` 早就定了）：
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| 导入包 | `preflight`（**和 preflight-gate 撞**） | `preflight_check` |
+| 命令 | `preflight`（**和 preflight-gate 撞**） | `preflight-check` |
+| 分发 | `preflight-check` | `preflight-check`（不变） |
+| 仓库 / 项目名 | `preflight` | `preflight`（不变） |
+| 评审记录目录 | `.preflight/` | `.preflight/`（不变，隐藏目录） |
+
+**代价是命令变长了**（`preflight-check demo`）—— 那是躲开模块覆盖的价钱。
+**收益是它能和 `preflight-gate` 装在同一台机器上而互不影响。**
+
+#### 验证：冲突真的消除了
+
+```
+$ python -c "import preflight_check; print(preflight_check.__version__)"
+1.0.0
+$ python -c "import preflight"
+ModuleNotFoundError: No module named 'preflight'   ← 不再撞车 ✓
+```
+
+**⚠️ 这个验证一开始是失败的**：venv 里还留着上一次可编辑安装的
+`preflight/` 目录，所以 `import preflight` **仍然能通过** ——
+而那会让人以为"冲突还在"。清掉残留之后才是真的干净。
+
+> 又一次「本地的状态不等于真实的状态」。这次的原因是**残留**，不是代码。
+
+#### 改名过程中被容器抓到的两个问题（**同一类**）
+
+| # | 问题 | 为什么本地发现不了 |
+| --- | --- | --- |
+| 1 | `OSError: License file does not exist: LICENSE` | Dockerfile 只 COPY 了 `pyproject.toml` 和 `README.md`，而 `license = { file = "LICENSE" }` 要读它。**本地那个文件就在旁边。** |
+| 2 | 镜像**构建成功但容器起不来**：`exec: "preflight": executable file not found` | `CMD ["preflight", "demo"]` 是 **JSON 数组**（逗号分隔），而一条「替换 `preflight <子命令>`」（空格分隔）的规则**命不中它** |
+
+第 2 条特别值得记：**构建绿了、运行才炸** —— 构建成功给了一个假的安心。
+
+**两个都补了测试**，而且都是**从 `pyproject.toml` 推导出该有什么**，
+不是把清单抄一遍 —— 所以下次改元数据它们会跟着走：
+
+- `test_the_dockerfile_copies_everything_the_build_needs`
+- `test_the_dockerfile_runs_the_console_script_that_exists`
+
+#### 改名之后
+
+```
+$ python -m pytest
+530 passed, 3 skipped
+$ docker run --rm preflight-check
+preflight demo　档案 agent-enterprise　（零 LLM、零联网）
+🔴 broken-agent　15 条发现（agent 专项 14 条）　判定 NO-GO
+🟢 clean-agent　0 条发现（agent 专项 0 条）　　判定 INCOMPLETE
+```
+
+**发布路上剩下的只有凭证了** —— 没有技术障碍。
+
 ### 任务结果（累计）
 
 **开始日期**：2026-10-11　**完成日期**：2026-10-11
@@ -1953,7 +2014,7 @@ PyYAML 读出来是 `{True: ...}` —— `assert "on" in loaded` 因此在两个
 
 | 编号 | 任务 | 状态 | 实际产出 |
 | --- | --- | --- | --- |
-| PF-44 | Docker 化 + 离线 demo | [x] | `Dockerfile` + `.dockerignore` + `preflight demo`；**干净容器里验证过** |
+| PF-44 | Docker 化 + 离线 demo | [x] | `Dockerfile` + `.dockerignore` + `preflight-check demo`；**干净容器里验证过** |
 | PF-45 | README 第一屏 | [x] | broken-agent vs clean-agent 的对比输出直接放第一屏 |
 | PF-46 | 文档补完 + 交叉引用无死链 | [x] | 三条测试守着：死链 / PF 编号对齐 / 命令都在 README 里 |
 | PF-47 | 名字查重 | [x] | **查出真冲突** —— 见下，需要改名才能发布 |
@@ -1961,7 +2022,7 @@ PyYAML 读出来是 `{True: ...}` —— `assert "on" in loaded` 因此在两个
 | PF-49 | 一篇短文：「我踩过的坑」 | [x] | [docs/PITFALLS.md](PITFALLS.md) |
 
 **新增**：`Dockerfile`、`.dockerignore`、`src/preflight/demo/`（随包发布的 demo 素材）、
-`preflight demo` 命令、`tests/test_release.py`（包装 + 文档一致性）、`docs/PITFALLS.md`。
+`preflight-check demo` 命令、`tests/test_release.py`（包装 + 文档一致性）、`docs/PITFALLS.md`。
 
 ### ⭐⭐ 这一阶段最大的价值：**Docker 构建逼出了三个只在"装完之后"出现的问题**
 
@@ -2000,7 +2061,7 @@ at the same path: `preflight/knowledge/claims/verification.yaml`.
 
 #### 缺陷二：`demo_files` 把字节码当文本读（P0）
 
-`preflight demo` 装完之后直接崩：
+`preflight-check demo` 装完之后直接崩：
 
 ```
 UnicodeDecodeError: 'utf-8' codec can't decode byte 0xf3 in position 0
@@ -2082,7 +2143,7 @@ Docker 镜像能跑 demo。**只差名字和凭证。**
 $ docker build -t preflight:dev .
 $ docker run --rm preflight:dev
 
-preflight demo　档案 agent-enterprise　（零 LLM、零联网）
+preflight-check demo　档案 agent-enterprise　（零 LLM、零联网）
 
 🔴 broken-agent　15 条发现（agent 专项 14 条）　判定 NO-GO
 🟢 clean-agent　0 条发现（agent 专项 0 条）　　判定 INCOMPLETE　（3 条规则依赖外部工具，这台机器上没装）
@@ -2091,7 +2152,7 @@ preflight demo　档案 agent-enterprise　（零 LLM、零联网）
 **这份输出是整个项目最有说服力的一屏**：两份 agent 的文件结构完全一样，
 差别只在几行保护代码上。
 
-**② 离线测试** ✅ —— `preflight demo` 不读环境变量、不联网、不调模型。
+**② 离线测试** ✅ —— `preflight-check demo` 不读环境变量、不联网、不调模型。
 容器的 `pip install` 装在构建期，运行期一个网络请求都没有。
 
 **③ 文档一致性** ✅ —— 三条测试：

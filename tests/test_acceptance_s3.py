@@ -25,12 +25,12 @@ from pathlib import Path
 
 import pytest
 
-from preflight.core.models import DetectKind, Rule, Severity
-from preflight.core.registry import load_knowledge
-from preflight.detect.agent_analysis import llm_call_sites, provided_kwargs
-from preflight.detect.engine import run_path
-from preflight.detect.registry import implemented_names
-from preflight.detect.repo import Repo
+from preflight_check.core.models import DetectKind, Rule, Severity
+from preflight_check.core.registry import load_knowledge
+from preflight_check.detect.agent_analysis import llm_call_sites, provided_kwargs
+from preflight_check.detect.engine import run_path
+from preflight_check.detect.registry import implemented_names
+from preflight_check.detect.repo import Repo
 from repo_fixtures import BROKEN_AGENT, CLEAN_AGENT
 from sample_knowledge import write_knowledge
 
@@ -192,7 +192,7 @@ def test_real_project_bytes_dict_forwarding_is_understood() -> None:
     调用点上**什么都没有** —— 只看字面量的话，
     「没设 timeout」和「没限输出」两条都会误报，而它们明明都设了。
 
-    所以 :func:`preflight.detect.agent_analysis.provided_kwargs`
+    所以 :func:`preflight_check.detect.agent_analysis.provided_kwargs`
     会把同一个函数里对该字典的赋值也解出来。这条测试钉住那个能力 ——
     没有它，这条规则在一个写得很规矩的真实项目上第一次跑就会误报。
     """
@@ -226,7 +226,7 @@ def test_model_config_position_filter_accepts_the_real_forms() -> None:
     ① 常见的四种配置写法都要被认出来
     ② 「举例 / 示例 / 参数化」这三种不算配置
     """
-    from preflight.detect.agent_checks import _is_model_config_position
+    from preflight_check.detect.agent_checks import _is_model_config_position
 
     # ① 真实项目里会出现的配置写法
     accepted = [

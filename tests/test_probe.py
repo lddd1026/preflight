@@ -21,10 +21,10 @@ from pathlib import Path
 
 import pytest
 
-from preflight.core.registry import load_knowledge
-from preflight.detect.derive import derive_checks
-from preflight.detect.probe import probe_mechanisms
-from preflight.detect.repo import Repo
+from preflight_check.core.registry import load_knowledge
+from preflight_check.detect.derive import derive_checks
+from preflight_check.detect.probe import probe_mechanisms
+from preflight_check.detect.repo import Repo
 from repo_fixtures import MECHANISM_FIXTURES
 from sample_knowledge import write_knowledge
 

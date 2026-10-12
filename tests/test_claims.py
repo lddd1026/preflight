@@ -26,20 +26,20 @@ from pathlib import Path
 
 import pytest
 
-from preflight.core.claims import ClaimKind, ClaimModality
-from preflight.core.registry import load_knowledge
-from preflight.detect.repo import Repo
-from preflight.runtime.budget import Budget
-from preflight.runtime.cache import ResponseCache, cache_key
-from preflight.runtime.llm import FakeLLMClient, LLMBudgetExceeded, LLMError, LLMRequest
-from preflight.runtime.trace import Tracer
-from preflight.understand.claims import (
+from preflight_check.core.claims import ClaimKind, ClaimModality
+from preflight_check.core.registry import load_knowledge
+from preflight_check.detect.repo import Repo
+from preflight_check.runtime.budget import Budget
+from preflight_check.runtime.cache import ResponseCache, cache_key
+from preflight_check.runtime.llm import FakeLLMClient, LLMBudgetExceeded, LLMError, LLMRequest
+from preflight_check.runtime.trace import Tracer
+from preflight_check.understand.claims import (
     extract_claims,
     find_line,
     match_quote,
     split_chunks,
 )
-from preflight.understand.discover import discover_documents
+from preflight_check.understand.discover import discover_documents
 from sample_knowledge import write_knowledge
 
 KNOWLEDGE = load_knowledge()
@@ -269,7 +269,7 @@ def test_plan_documents_are_still_extracted(tmp_path: Path) -> None:
 
 
 def test_checkable_is_false_for_everything_but_commitments() -> None:
-    from preflight.core.claims import Claim
+    from preflight_check.core.claims import Claim
 
     def make(modality: ClaimModality) -> Claim:
         return Claim(
@@ -294,7 +294,7 @@ def test_checkable_is_false_for_everything_but_commitments() -> None:
 
 def _quote_reason(content: str, quote: str) -> str | None:
     """跑一遍结构性核对，返回拒绝原因（None = 通过）。"""
-    from preflight.understand.claims import _structurally_implausible
+    from preflight_check.understand.claims import _structurally_implausible
 
     match = match_quote(content, quote)
     assert match is not None, f"这段引用在文档里找不到，测不了：{quote!r}"
@@ -525,8 +525,8 @@ def test_criterion_lines_are_forced_to_plan() -> None:
     而模型很容易把它标成 commitment（句子读起来很像断言），
     所以这里由**代码**做最终否决。
     """
-    from preflight.core.claims import ClaimMarkers
-    from preflight.understand.claims import forced_plan
+    from preflight_check.core.claims import ClaimMarkers
+    from preflight_check.understand.claims import forced_plan
 
     markers = ClaimMarkers(
         criterion=["验收", "关键路径"],
@@ -545,8 +545,8 @@ def test_completed_criteria_are_not_forced_to_plan() -> None:
     少了这条例外，一批真承诺会被误标成计划 —— 而误标成计划之后
     它们就再也不会被验证，且不会有任何报错。
     """
-    from preflight.core.claims import ClaimMarkers
-    from preflight.understand.claims import forced_plan
+    from preflight_check.core.claims import ClaimMarkers
+    from preflight_check.understand.claims import forced_plan
 
     markers = ClaimMarkers(criterion=["验收"], completion=["✅", "已完成", "通过"])
 
@@ -748,7 +748,7 @@ def test_cache_hit_costs_zero_not_the_old_price(tmp_path: Path) -> None:
     request = LLMRequest(messages=[{"role": "user", "content": "hi"}])
     key = cache_key(request, prompt_version="t")
 
-    from preflight.runtime.llm import LLMResponse
+    from preflight_check.runtime.llm import LLMResponse
 
     cache.put(key, LLMResponse(text="ok", model="m", cost_usd=0.25, prompt_tokens=100))
     hit = cache.get(key)
@@ -841,7 +841,7 @@ def test_budget_message_says_what_to_do() -> None:
 
 def test_budget_charges_immediately_after_each_call() -> None:
     """记账必须**紧贴每一次调用** —— 中间任何一次提前退出都会漏掉已花的钱。"""
-    from preflight.runtime.llm import LLMResponse
+    from preflight_check.runtime.llm import LLMResponse
 
     budget = Budget()
     budget.charge(LLMResponse(text="", model="m", cost_usd=0.1, prompt_tokens=10), step="a")
@@ -857,7 +857,7 @@ def test_unknown_cost_is_flagged_not_treated_as_free() -> None:
     0 和"不知道"混起来，成本闸门就形同虚设 ——
     这正是 `agent/cost-from-price-table` 那条规则的血案。
     """
-    from preflight.runtime.llm import LLMResponse
+    from preflight_check.runtime.llm import LLMResponse
 
     budget = Budget(max_cost_usd=1.0)
     budget.charge(LLMResponse(text="", model="m", cost_usd=None))
@@ -867,7 +867,7 @@ def test_unknown_cost_is_flagged_not_treated_as_free() -> None:
 
 
 def test_budget_cost_gate_does_not_trust_unknown_costs() -> None:
-    from preflight.runtime.llm import LLMResponse
+    from preflight_check.runtime.llm import LLMResponse
 
     budget = Budget(max_cost_usd=0.01)
     budget.charge(LLMResponse(text="", model="m", cost_usd=None))
@@ -933,7 +933,7 @@ def test_nothing_imports_litellm_until_it_is_needed() -> None:
     preflight 的核心承诺是"确定性层零 LLM、零依赖"。把 litellm 变成
     必装依赖，等于让只想跑确定性检查的人也装一个几十兆的模型网关。
     """
-    import preflight.runtime  # noqa: F401
+    import preflight_check.runtime  # noqa: F401
 
     assert "litellm" not in sys.modules, "litellm 被 import 了 —— 它必须是用到才 import 的可选依赖"
 

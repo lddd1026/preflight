@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from preflight.cli import app
+from preflight_check.cli import app
 from repo_fixtures import CLEAN, DIRTY
 from sample_knowledge import write_knowledge
 

@@ -25,7 +25,7 @@ import ast
 
 import pytest
 
-from preflight.detect.agent_analysis import has_default
+from preflight_check.detect.agent_analysis import has_default
 
 
 def _statement(source: str) -> ast.stmt:
@@ -102,7 +102,7 @@ def test_implementation_shape_is_pinned() -> None:
     """
     import inspect
 
-    from preflight.detect.agent_analysis import has_default as implementation
+    from preflight_check.detect.agent_analysis import has_default as implementation
 
     tree = ast.parse(inspect.getsource(implementation))
     returns = [node for node in ast.walk(tree) if isinstance(node, ast.Return)]

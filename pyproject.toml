@@ -79,7 +79,7 @@ llm = [
 ]
 
 [project.scripts]
-preflight = "preflight.cli:main"
+preflight-check = "preflight_check.cli:main"
 
 # ⚠️ 这一段的位置**必须**在所有 `[project.*]` 标量之后。
 #
@@ -116,7 +116,7 @@ Changelog = "https://github.com/lddd1026/preflight/blob/main/docs/PROGRESS.md"
 # 那根本不构建 wheel。是 S8 的 Docker 构建第一次把它逼出来的。
 #
 # 教训：**"本地能跑"和"装得上"是两件事。** 而后者只有真去构建一次才知道。
-packages = ["src/preflight"]
+packages = ["src/preflight_check"]
 
 [tool.ruff]
 line-length = 100
@@ -129,7 +129,7 @@ src = ["src", "tests"]
 # 让 linter 去检查一份"故意写坏"的演示素材，得到的是"这份素材确实是坏的"，
 # 而那正是它存在的理由。真正要守的是**它坏得符合预期**
 # （由 tests/test_acceptance_s3.py 守着）。
-extend-exclude = ["*.md", "src/preflight/demo"]
+extend-exclude = ["*.md", "src/preflight_check/demo"]
 
 [tool.ruff.lint]
 # ⚠️ 这里的 select **包括 S（bandit 安全规则）**，是因为一件事：
@@ -179,7 +179,7 @@ no_implicit_optional = true
 # override 是在**发现完文件之后**才生效的，而"重复模块名"这个错误
 # 恰恰发生在发现阶段 —— 那时 override 还没轮到。
 # 这个区别花了一次失败才搞清楚。
-exclude = "preflight[/\\\\]demo"
+exclude = "preflight_check[/\\\\]demo"
 
 # litellm 是**可选依赖**（`[llm]` extra），typing 也不完整。
 #

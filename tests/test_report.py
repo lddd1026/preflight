@@ -13,13 +13,13 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from preflight.core.models import (
+from preflight_check.core.models import (
     Finding,
     Review,
     Severity,
     SkippedRule,
 )
-from preflight.core.report import (
+from preflight_check.core.report import (
     render_json,
     render_markdown,
     render_terminal,

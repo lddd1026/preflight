@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from preflight.core.models import (
+from preflight_check.core.models import (
     AppliesTo,
     Audience,
     DetectSpec,

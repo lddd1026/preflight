@@ -34,19 +34,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from preflight.core.registry import load_knowledge
-from preflight.detect.repo import Repo
-from preflight.runtime.budget import Budget
-from preflight.runtime.cache import ResponseCache
-from preflight.runtime.llm import (
+from preflight_check.core.registry import load_knowledge
+from preflight_check.detect.repo import Repo
+from preflight_check.runtime.budget import Budget
+from preflight_check.runtime.cache import ResponseCache
+from preflight_check.runtime.llm import (
     DEFAULT_BASE_URL,
     DEFAULT_MODEL,
     LLMError,
     OpenAICompatClient,
 )
-from preflight.runtime.trace import Tracer
-from preflight.understand.claims import PROMPT_VERSION, extract_claims
-from preflight.understand.discover import discover_documents
+from preflight_check.runtime.trace import Tracer
+from preflight_check.understand.claims import PROMPT_VERSION, extract_claims
+from preflight_check.understand.discover import discover_documents
 
 
 def read_key(env_file: Path | None) -> str | None:

@@ -25,7 +25,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # 先只拷元数据和源码 —— 让 pip 的层缓存有意义
-COPY pyproject.toml README.md ./
+#
+# ⚠️ **`LICENSE` 不是可选的。** `pyproject.toml` 里写了
+# `license = { file = "LICENSE" }`，构建元数据时会去读那个文件 ——
+# 没拷进来就直接
+#
+#     OSError: License file does not exist: LICENSE
+#
+# 而本地构建永远发现不了（那个文件就在旁边）。
+# 又一次是"干净环境"才暴露出来的问题 —— 这一轮里第三次了。
+# 现在有一条测试守着这份清单（`test_the_dockerfile_copies_everything_the_build_needs`）。
+COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 
 # ⚠️ **不装 `[tools]` / `[llm]`**。
@@ -43,6 +53,6 @@ COPY src ./src
 # （包不存在、版本冲突），只是不让"网络抖一下"变成"镜像构建不了"。
 RUN pip install --no-cache-dir --retries 10 --timeout 60 .
 
-# 随包发布的 demo 素材在 src/preflight/demo/ 里，`preflight demo` 用它 ——
+# 随包发布的 demo 素材在 src/preflight/demo/ 里，`preflight-check demo` 用它 ——
 # **不配 API Key、不联网**就能看到 broken-agent vs clean-agent 的对比。
-CMD ["preflight", "demo"]
+CMD ["preflight-check", "demo"]

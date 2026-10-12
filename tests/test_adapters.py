@@ -24,13 +24,13 @@ from typing import Any
 import pytest
 
 from fake_tool import tool_command, write_fake_tool
-from preflight.core.models import Rule, Severity
-from preflight.core.registry import load_knowledge
-from preflight.detect.adapters.base import find_tool
-from preflight.detect.adapters.ruff_tool import RuffAdapter
-from preflight.detect.base import CheckContext
-from preflight.detect.engine import run_path
-from preflight.detect.repo import Repo
+from preflight_check.core.models import Rule, Severity
+from preflight_check.core.registry import load_knowledge
+from preflight_check.detect.adapters.base import find_tool
+from preflight_check.detect.adapters.ruff_tool import RuffAdapter
+from preflight_check.detect.base import CheckContext
+from preflight_check.detect.engine import run_path
+from preflight_check.detect.repo import Repo
 from sample_knowledge import write_knowledge
 
 KNOWLEDGE = load_knowledge()
@@ -244,7 +244,7 @@ def test_missing_tool_becomes_a_skip(rule_id: str, tmp_path: Path, monkeypatch: 
     消息必须可执行（告诉用户装它或者用 tool_command 指定），
     而且要点明"没查不等于没问题"。
     """
-    monkeypatch.setattr("preflight.detect.adapters.base.find_tool", lambda name: None)
+    monkeypatch.setattr("preflight_check.detect.adapters.base.find_tool", lambda name: None)
     root = write_knowledge(tmp_path / "proj", {"requirements.txt": "requests==2.19.0\n"})
 
     review = _run(KNOWLEDGE.rules[rule_id], root)

@@ -24,7 +24,7 @@
 
 from __future__ import annotations
 
-from preflight.demo import demo_files
+from preflight_check.demo import demo_files
 
 # --------------------------------------------------------------------------
 # DOCS：一个"文档齐全"的项目 —— 文档发现与分类的夹具

@@ -177,7 +177,7 @@ runtime 被 core / understand 使用
 | PF-7 | `Detector` 接口 + 三个实现：AST / 文本 / 存在性 | 每个检测器独立单测 |
 | PF-8 | 通用规则 11 条（见 [RULES.md](RULES.md) §2） | 每条一个正例 + 一个反例 fixture |
 | PF-9 | 报告渲染：终端 + Markdown | 同一 Review 渲染两次结果一致 |
-| PF-10 | `preflight run <path>` 端到端 | 在 fixture 仓库上跑出预期结果 |
+| PF-10 | `preflight-check run <path>` 端到端 | 在 fixture 仓库上跑出预期结果 |
 
 **🧪 阶段测试**
 
@@ -479,14 +479,14 @@ runtime 被 core / understand 使用
 
 > 实际结果见 [PROGRESS.md](PROGRESS.md) 的 S8 章节。
 >
-> **退出标准达到了**：干净容器里 `pip install` → `preflight demo` → 出结果。
+> **退出标准达到了**：干净容器里 `pip install` → `preflight-check demo` → 出结果。
 >
 > **这一阶段真正的产出是三个"只在装完之后出现"的问题** ——
 > Docker 干净容器一次全部逼了出来：
 >
 > 1. **wheel 从 S0 起就构建不出来**（`force-include` 重复打包 knowledge/）——
 >    本地全程用 `pip install -e .`，**那根本不构建 wheel**
-> 2. `preflight demo` 把 `__pycache__/*.pyc` 当文本读 → `UnicodeDecodeError`
+> 2. `preflight-check demo` 把 `__pycache__/*.pyc` 当文本读 → `UnicodeDecodeError`
 > 3. rich 在 Linux 的 80 列终端里把长路径**折成两行** → 用户复制路径拿到垃圾
 >
 > **PF-48 没有做**，理由是**名字冲突**：`preflight` 的**导入包名和命令名**

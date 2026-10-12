@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from preflight.core.claims import (
+from preflight_check.core.claims import (
     Claim,
     ClaimKind,
     ClaimModality,
@@ -27,10 +27,10 @@ from preflight.core.claims import (
     Verdict,
     Verification,
 )
-from preflight.core.registry import load_knowledge
-from preflight.detect.repo import Repo
-from preflight.understand.mapping import choose
-from preflight.understand.verify import _enforce_evidence_rule, verify_claims
+from preflight_check.core.registry import load_knowledge
+from preflight_check.detect.repo import Repo
+from preflight_check.understand.mapping import choose
+from preflight_check.understand.verify import _enforce_evidence_rule, verify_claims
 from sample_knowledge import write_knowledge
 
 KNOWLEDGE = load_knowledge()
@@ -171,7 +171,7 @@ def test_all_caps_words_in_prose_are_not_symbols() -> None:
     认不出来了 —— 那个代价是**故意接受的**：认不出来只是少一条证据，
     认错会让正确的声明变成假漂移。
     """
-    from preflight.understand.mapping import _symbol_candidates
+    from preflight_check.understand.mapping import _symbol_candidates
 
     assert _symbol_candidates("起一个本地的 OpenAI 兼容端点（用标准库）") == []
     assert _symbol_candidates("LLM 调用必须有 timeout") == []
@@ -437,7 +437,7 @@ def test_guard_failure_downgrades_the_verdict(tmp_path: Path) -> None:
 
     这是防幻觉落到结论上的那一步：编造的证据不能变成一个看起来正常的结论。
     """
-    from preflight.understand.guard import validate_evidence
+    from preflight_check.understand.guard import validate_evidence
 
     repo = _repo(tmp_path)
     fabricated = Evidence(path="src/made_up.py", line=1, note="编的")

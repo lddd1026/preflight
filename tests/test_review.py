@@ -24,21 +24,21 @@ from pathlib import Path
 
 import pytest
 
-from preflight.core.interact import Answer, Question, Waiver, WaiverSet
-from preflight.core.models import Severity
-from preflight.core.registry import load_knowledge
-from preflight.core.release import ReleaseReview, WaiverRecord, build_release_review
-from preflight.detect.engine import run_path
-from preflight.detect.probe import probe_mechanisms
-from preflight.detect.repo import Repo
-from preflight.interact.questions import build_questionnaire
-from preflight.interact.store import (
+from preflight_check.core.interact import Answer, Question, Waiver, WaiverSet
+from preflight_check.core.models import Severity
+from preflight_check.core.registry import load_knowledge
+from preflight_check.core.release import ReleaseReview, WaiverRecord, build_release_review
+from preflight_check.detect.engine import run_path
+from preflight_check.detect.probe import probe_mechanisms
+from preflight_check.detect.repo import Repo
+from preflight_check.interact.questions import build_questionnaire
+from preflight_check.interact.store import (
     load_answers,
     load_waivers,
     save_answers,
     save_waivers,
 )
-from preflight.interact.waiver import (
+from preflight_check.interact.waiver import (
     apply_waivers,
     expired_audit,
     waiver_audit,
@@ -213,7 +213,7 @@ def test_doc_answers_skip_the_question_but_are_recorded(tmp_path: Path) -> None:
     为什么记：我们没问它，但结论里用到了它。用户有权知道
     「这个判断是从你 README 第 14 行读来的」。
     """
-    from preflight.core.claims import Claim, ClaimKind, ClaimModality
+    from preflight_check.core.claims import Claim, ClaimKind, ClaimModality
 
     claims = [
         Claim(

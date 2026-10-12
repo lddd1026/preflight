@@ -15,9 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from preflight.core.models import Severity
-from preflight.core.registry import load_knowledge
-from preflight.detect.engine import run_path
+from preflight_check.core.models import Severity
+from preflight_check.core.registry import load_knowledge
+from preflight_check.detect.engine import run_path
 from repo_fixtures import CLEAN, DIRTY, EMPTY
 from sample_knowledge import write_knowledge
 
@@ -66,7 +66,7 @@ def assert_only_missing_tools_were_skipped(review: object) -> None:
     "有规则没跑成"会变成一个能被任何东西触发的模糊状态，
     而模糊的状态很快就会被所有人忽略。
     """
-    from preflight.core.models import DetectKind, Review
+    from preflight_check.core.models import DetectKind, Review
 
     assert isinstance(review, Review)
     for entry in review.skipped:
@@ -113,7 +113,7 @@ def test_dirty_repo_fires_every_rule_that_does_not_need_a_tool(tmp_path: Path) -
     上一条测试允许"适配器规则被跳过"，这一条把范围收紧回去：
     剩下 12 条内置规则在脏仓库上一条都不许漏。
     """
-    from preflight.core.models import DetectKind
+    from preflight_check.core.models import DetectKind
 
     review = _run(write_knowledge(tmp_path / "dirty", DIRTY))
 
@@ -238,7 +238,7 @@ def test_every_file_is_read_at_most_once(tmp_path: Path) -> None:
 
     有缓存则每个文件最多读一次，与规则数无关。
     """
-    from preflight.detect.repo import Repo
+    from preflight_check.detect.repo import Repo
 
     root = write_knowledge(tmp_path / "big", _make_repo_files(1000))
 
@@ -265,7 +265,7 @@ def test_every_file_is_read_at_most_once(tmp_path: Path) -> None:
 
 def test_scan_skips_vendor_directories_in_a_realistic_layout(tmp_path: Path) -> None:
     """真实项目里 .venv 往往比源码大一个数量级 —— 不忽略就没法用。"""
-    from preflight.detect.repo import Repo
+    from preflight_check.detect.repo import Repo
 
     files = {"app.py": "x = 1\n", ".gitignore": ".env\n", "RUNBOOK.md": "回滚步骤\n"}
     for index in range(300):

@@ -21,11 +21,11 @@
 
 ```bash
 pip install preflight-check
-preflight demo
+preflight-check demo
 ```
 
 ```
-preflight demo　档案 agent-enterprise　（零 LLM、零联网）
+preflight-check demo　档案 agent-enterprise　（零 LLM、零联网）
 
 🔴 broken-agent　15 条发现（agent 专项 14 条）　判定 NO-GO
 🟢 clean-agent　0 条发现（agent 专项 0 条）　　判定 INCOMPLETE
@@ -50,8 +50,8 @@ preflight demo　档案 agent-enterprise　（零 LLM、零联网）
 > **agent 的可靠性不在算法里，在这些细节里。**
 > 而这几行恰好是最容易忘、也最难在 code review 里看出来的东西。
 
-想看完整对照：`preflight demo --which both`。
-想看它在你自己的项目上说什么：`preflight run .`
+想看完整对照：`preflight-check demo --which both`。
+想看它在你自己的项目上说什么：`preflight-check run .`
 
 ---
 
@@ -121,21 +121,21 @@ preflight demo　档案 agent-enterprise　（零 LLM、零联网）
 ```powershell
 pip install preflight-check           # 或者从源码：pwsh -File scripts/setup.ps1
 
-preflight version                     # 看版本和语料指纹
-preflight demo                        # ⭐ 离线 demo：不配 API Key、不联网就能看到对比
-preflight run .                       # ⭐ 跑一次上线前评审（零 LLM、零联网）
-preflight run . -p agent-enterprise   # 换一个场景档案（门禁更严）
-preflight run . -f markdown -o RELEASE_REVIEW.md
-preflight run . -f json               # 给下一次运行做机器对比
-preflight run . --full                # 连修复建议和血案一起打印
+preflight-check version                     # 看版本和语料指纹
+preflight-check demo                        # ⭐ 离线 demo：不配 API Key、不联网就能看到对比
+preflight-check run .                       # ⭐ 跑一次上线前评审（零 LLM、零联网）
+preflight-check run . -p agent-enterprise   # 换一个场景档案（门禁更严）
+preflight-check run . -f markdown -o RELEASE_REVIEW.md
+preflight-check run . -f json               # 给下一次运行做机器对比
+preflight-check run . --full                # 连修复建议和血案一起打印
 
-preflight docs .                      # 看项目里有哪些文档、判成了什么类型（不花钱）
-preflight docs . -f json
+preflight-check docs .                      # 看项目里有哪些文档、判成了什么类型（不花钱）
+preflight-check docs . -f json
 
-preflight list-rules                  # 看有哪些规则
-preflight list-rules --matrix         # 看矩阵里哪些格子还没人覆盖
-preflight explain agent/no-request-timeout   # 讲清一条规则，含它对应的血案
-preflight knowledge-check             # 校验语料（贡献规则的入口）
+preflight-check list-rules                  # 看有哪些规则
+preflight-check list-rules --matrix         # 看矩阵里哪些格子还没人覆盖
+preflight-check explain agent/no-request-timeout   # 讲清一条规则，含它对应的血案
+preflight-check knowledge-check             # 校验语料（贡献规则的入口）
 
 pwsh -File scripts/check.ps1          # ruff + format + pytest + mypy
 ```
@@ -146,24 +146,24 @@ pwsh -File scripts/check.ps1          # ruff + format + pytest + mypy
 pip install -e ".[dev,llm]"           # 可选：装 litellm（不装也能用，见下）
 $env:PREFLIGHT_API_KEY = "..."        # 或者 --api-key
 
-preflight claims .                    # 从文档里抽可验证的声明
-preflight claims . --max-cost 0.20    # 三道闸门默认都开着
-preflight claims . --trace            # 每一步都落盘，事后可复盘
+preflight-check claims .                    # 从文档里抽可验证的声明
+preflight-check claims . --max-cost 0.20    # 三道闸门默认都开着
+preflight-check claims . --trace            # 每一步都落盘，事后可复盘
 
-preflight mechanisms .                # ⭐ 探测有哪些机制，推导出该查什么（带推理链）
-preflight mechanisms . --full         # 把每一条的完整推理链都打出来
+preflight-check mechanisms .                # ⭐ 探测有哪些机制，推导出该查什么（带推理链）
+preflight-check mechanisms . --full         # 把每一条的完整推理链都打出来
 
-preflight review . --today 2026-10-11 # ⭐⭐ 一次完整评审 → RELEASE_REVIEW.md
-preflight ask .                       # 还有哪些必答问题没回答
-preflight answer blast-radius "只是不好用" --who 张三
-preflight waive general/no-runbook --who 张三 --why "下季度补" --expires 2027-01-31
-preflight waivers .                   # 豁免审计：谁放行了什么、到什么时候
+preflight-check review . --today 2026-10-11 # ⭐⭐ 一次完整评审 → RELEASE_REVIEW.md
+preflight-check ask .                       # 还有哪些必答问题没回答
+preflight-check answer blast-radius "只是不好用" --who 张三
+preflight-check waive general/no-runbook --who 张三 --why "下季度补" --expires 2027-01-31
+preflight-check waivers .                   # 豁免审计：谁放行了什么、到什么时候
 ```
 
 ### 一次完整评审：三个阶段，一条命令
 
 ```powershell
-preflight review . --today 2026-10-11 --claims claims.json
+preflight-check review . --today 2026-10-11 --claims claims.json
 ```
 
 它把三件事串起来，产出**一份报告**：
@@ -229,7 +229,7 @@ LLM 调用 × 不能重
 ### 文档兑现率：这个工具最终给你的数字
 
 ```powershell
-preflight verify . --claims claims.json
+preflight-check verify . --claims claims.json
 ```
 
 它把每条声明和代码对上，给出**三态**结论：
@@ -332,22 +332,42 @@ pip install -e ".[dev,tools]"         # 装 pip-audit + ruff
 | S5 | 证据核对 + 防幻觉 + 文档兑现率 | ✅ 10/10 编造被拒；兑现率 95%（分母 43/204） |
 | S6 | 机制探测 + 矩阵推导（10 机制 × 6 不变量） | ✅ 三份夹具两两不同；推理链含文件行 |
 | S7 | 人工签核 + 豁免 + CI 门禁（4 个档案，必答 5 条） | ✅ 报告可从 JSON 逐字节重建 |
-| S8 | 打包发布（Docker + 离线 demo + 文档一致性） | ⚠️ 干净容器验证过；**未发布 PyPI**（名字冲突） |
+| S8 | 打包发布（Docker + 离线 demo + 文档一致性） | ⚠️ 干净容器验证过；**未发布 PyPI**（缺凭证） |
 | S9 | 短文：[我踩过的坑](docs/PITFALLS.md) | ✅ 18 条血案 |
 
-**当前规模**：74 个 Python 文件 · **503 passed + 3 skipped** ·
+**当前规模**：74 个 Python 文件 · **528 passed + 3 skipped** ·
 语料 29 条规则 / **10 个机制（48 格）** / 6 条不变量 / **4 个档案** /
 5 条必答 + 4 条条件展开 · Docker 镜像可跑 · mypy 全绿。
 
-> **⚠️ 名字冲突（发布前必须解决）**
->
-> `preflight` 这个**导入包名和命令名**已被活跃项目
-> [`preflight-gate`](https://pypi.org/project/preflight-gate/) 占用
-> （它的 README 里明写着 import / command / schema 都叫 `preflight`）。
-> 两者同时安装会**静默互相覆盖模块文件** —— 比"命令被抢"更糟。
->
-> `precheck` / `shipcheck-cli` / `launchcheck` / `preflight-ai` 也全被占用。
-> 所以这是一个**必须改名**的问题，而不是"换个 dist 名就行"。
+### 名字：为什么命令叫 `preflight-check` 而不是 `preflight`
+
+**因为 `preflight` 这个导入包名和命令名已经被占了。**
+
+活跃项目 [`preflight-gate`](https://pypi.org/project/preflight-gate/)
+（0.7.0 / 2026-09-01）的 README 里明写着：
+
+> The distribution is `preflight-gate`; **the import, the command, and the
+> manifest schema are all `preflight`**.
+
+而它的定位（**agent 工具信任边界**）和本项目的目标用户完全重叠。
+两者同时安装会**静默互相覆盖模块文件** —— 比「命令被抢」更糟：
+它是模块级的覆盖，而 pip 不会有任何提示。
+
+`precheck` / `shipcheck-cli` / `launchcheck` / `preflight-ai` 也全被占用，
+所以这是一个**必须改名**的问题，而不是「换个 dist 名就行」。
+
+现在是这样的：
+
+| | 名字 |
+| --- | --- |
+| 项目 / 仓库 | `preflight` |
+| 分发（PyPI） | `preflight-check` |
+| 导入包 | `preflight_check` |
+| 命令 | `preflight-check` |
+| 评审记录目录 | `.preflight/` |
+
+**代价是命令变长了**（`preflight-check demo`）—— 那是躲开模块覆盖的价钱。
+**收益是它能和 `preflight-gate` 装在同一台机器上而互不影响。**
 
 进度细节见 [docs/PROGRESS.md](docs/PROGRESS.md)。
 

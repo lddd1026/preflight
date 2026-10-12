@@ -13,9 +13,9 @@ import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
-from preflight import __version__
-from preflight.cli import app
-from preflight.core.registry import DEFAULT_KNOWLEDGE_ROOT, load_knowledge
+from preflight_check import __version__
+from preflight_check.cli import app
+from preflight_check.core.registry import DEFAULT_KNOWLEDGE_ROOT, load_knowledge
 from sample_knowledge import base_files, write_knowledge
 
 runner = CliRunner()
@@ -241,7 +241,7 @@ def test_error_paths_survive_a_narrow_terminal(tmp_path: Path) -> None:
     )
 
     narrow = Console(width=40, force_terminal=False, no_color=True)
-    with patch("preflight.cli.console", narrow):
+    with patch("preflight_check.cli.console", narrow):
         result = runner.invoke(app, ["--knowledge", str(root), "knowledge-check"])
 
     assert result.exit_code == 1, result.stdout

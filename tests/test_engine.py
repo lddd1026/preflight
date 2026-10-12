@@ -11,11 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from preflight.core.models import Rule, Severity, SkippedRule
-from preflight.core.registry import load_knowledge
-from preflight.detect import registry
-from preflight.detect.base import BaseChecker, CheckContext
-from preflight.detect.engine import run_path
+from preflight_check.core.models import Rule, Severity, SkippedRule
+from preflight_check.core.registry import load_knowledge
+from preflight_check.detect import registry
+from preflight_check.detect.base import BaseChecker, CheckContext
+from preflight_check.detect.engine import run_path
 from sample_knowledge import write_knowledge
 
 KNOWLEDGE = load_knowledge()
@@ -167,15 +167,15 @@ def test_declared_but_unimplemented_reason_is_different() -> None:
     前者是"我们还没做"（会做），后者是"你写错名字了"（要做的是改配置）。
     混成一句话，用户不知道该等还是该改。
     """
-    from preflight.detect.engine import run_rules
-    from preflight.detect.repo import Repo
+    from preflight_check.detect.engine import run_rules
+    from preflight_check.detect.repo import Repo
 
     root = Path(".")
     repo = Repo.scan(root)
     rule = _rule("agent/no-request-timeout")
 
     # 把实现表里的实现临时拿走，模拟"声明了但没实现"
-    import preflight.detect.registry as registry
+    import preflight_check.detect.registry as registry
 
     saved = registry.IMPLEMENTED.pop("missing-call-kwarg")
     try:
@@ -193,7 +193,7 @@ def test_s3_leaves_no_declared_but_unimplemented_checker() -> None:
     这一阶段的目标是"14 条 agent 规则全部落地"。没有未实现的检查器，
     就成了一个可检查的事实 —— 而不是靠人去翻文档。
     """
-    from preflight.detect import registry
+    from preflight_check.detect import registry
 
     remaining = registry.declared_but_not_implemented()
     assert remaining == frozenset(), f"还有检查器没实现：{sorted(remaining)}"

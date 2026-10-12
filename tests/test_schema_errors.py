@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from preflight.core.registry import KnowledgeLoadError, load_knowledge
+from preflight_check.core.registry import KnowledgeLoadError, load_knowledge
 from sample_knowledge import VALID_RULE
 
 pytestmark = pytest.mark.filterwarnings("error")

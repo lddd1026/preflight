@@ -40,12 +40,12 @@ from pathlib import Path
 
 import pytest
 
-from preflight.core.models import Severity
-from preflight.core.registry import load_knowledge
+from preflight_check.core.models import Severity
+from preflight_check.core.registry import load_knowledge
 from sample_knowledge import write_knowledge
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src" / "preflight"
+SRC = ROOT / "src" / "preflight_check"
 KNOWLEDGE = load_knowledge()
 
 
@@ -180,7 +180,7 @@ def test_rule_severity_comes_from_the_corpus_not_the_code(tmp_path: Path) -> Non
     一条只检查"字符串里没有 id"的实现也能通过 AST 那条，
     但它可能把严重度写死在 checker 里。这一条挡住那种情况。
     """
-    from preflight.detect.engine import run_path
+    from preflight_check.detect.engine import run_path
 
     for severity in ("blocker", "info"):
         project = write_knowledge(

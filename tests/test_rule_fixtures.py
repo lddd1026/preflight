@@ -19,7 +19,7 @@
 它们**不要求夹具**，但要求另一件事：**必须被显式跳过**，而不是静默通过。
 
 所以这里的断言分两种，取决于检查器实现没实现 —— 而"实现没实现"直接读
-:mod:`preflight.detect.registry`，不靠人工维护的名单。
+:mod:`preflight_check.detect.registry`，不靠人工维护的名单。
 """
 
 from __future__ import annotations
@@ -31,10 +31,10 @@ from typing import Any
 import pytest
 
 from fake_tool import write_fake_tool
-from preflight.core.models import Rule, Severity
-from preflight.core.registry import load_knowledge
-from preflight.detect.engine import run_path
-from preflight.detect.registry import implemented_names
+from preflight_check.core.models import Rule, Severity
+from preflight_check.core.registry import load_knowledge
+from preflight_check.detect.engine import run_path
+from preflight_check.detect.registry import implemented_names
 from rule_fixtures import FIXTURES, FakeTool
 from sample_knowledge import write_knowledge
 
@@ -168,7 +168,7 @@ def test_adapter_rules_declare_a_fake_tool_on_both_sides() -> None:
 
     所以这里直接断言两边都有。
     """
-    from preflight.core.models import DetectKind
+    from preflight_check.core.models import DetectKind
 
     offenders: list[str] = []
     for rule_id, fixture in FIXTURES.items():

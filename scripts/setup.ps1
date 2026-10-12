@@ -125,5 +125,5 @@ for name in ('pydantic', 'pyyaml', 'typer', 'rich'):
 
 Write-Host "`n安装完成。下一步：" -ForegroundColor Green
 Write-Host "  .\.venv\Scripts\Activate.ps1     # 激活环境"
-Write-Host "  preflight list-rules             # 看有哪些规则"
+Write-Host "  preflight-check list-rules             # 看有哪些规则"
 Write-Host "  pwsh -File scripts/check.ps1     # 跑全部检查"

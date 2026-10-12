@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
-from preflight.core.models import DetectKind
-from preflight.core.specs import CHECKERS
-from preflight.detect import registry
+from preflight_check.core.models import DetectKind
+from preflight_check.core.specs import CHECKERS
+from preflight_check.detect import registry
 
 DETECT_DIR = Path(__file__).resolve().parents[1] / "src" / "preflight" / "detect"
 
@@ -134,7 +134,8 @@ def test_importing_detect_does_not_pull_in_llm_sdks() -> None:
     probe = (
         "import sys;"
         "before = set(sys.modules);"
-        "import preflight.detect, preflight.detect.engine, preflight.detect.registry;"
+        "import preflight_check.detect, preflight_check.detect.engine,"
+        " preflight_check.detect.registry;"
         "added = {name.split('.')[0] for name in set(sys.modules) - before};"
         "print(','.join(sorted(added)))"
     )
@@ -149,7 +150,7 @@ def test_importing_detect_does_not_pull_in_llm_sdks() -> None:
 
     added = {name for name in result.stdout.strip().split(",") if name}
     leaked = sorted(added & set(FORBIDDEN_AT_RUNTIME))
-    assert not leaked, f"import preflight.detect **多带进了**这些：{leaked}"
+    assert not leaked, f"import preflight_check.detect **多带进了**这些：{leaked}"
 
 
 # --------------------------------------------------------------------------

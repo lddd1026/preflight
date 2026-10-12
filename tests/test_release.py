@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -33,18 +34,18 @@ ROOT = Path(__file__).resolve().parents[1]
 #: 每一条都对应一种"装好了但少了东西"的失败形态。
 REQUIRED_IN_WHEEL: tuple[str, ...] = (
     # 知识语料 —— 少了它一条规则都加载不到
-    "preflight/knowledge/invariants/no-loss.yaml",
-    "preflight/knowledge/mechanisms/llm-call.yaml",
-    "preflight/knowledge/rules/no-request-timeout.yaml",
+    "preflight_check/knowledge/invariants/no-loss.yaml",
+    "preflight_check/knowledge/mechanisms/llm-call.yaml",
+    "preflight_check/knowledge/rules/no-request-timeout.yaml",
     # S4/S5 新增的两张表
-    "preflight/knowledge/docs/roles.yaml",
-    "preflight/knowledge/claims/verification.yaml",
+    "preflight_check/knowledge/docs/roles.yaml",
+    "preflight_check/knowledge/claims/verification.yaml",
     # S8 新增的问题表与 demo
-    "preflight/knowledge/questions/questions.yaml",
-    "preflight/demo/broken-agent/agent.py",
-    "preflight/demo/clean-agent/agent.py",
+    "preflight_check/knowledge/questions/questions.yaml",
+    "preflight_check/demo/broken-agent/agent.py",
+    "preflight_check/demo/clean-agent/agent.py",
     # 档案（S7 起是 4 个）
-    "preflight/knowledge/profiles/saas-enterprise.yaml",
+    "preflight_check/knowledge/profiles/saas-enterprise.yaml",
 )
 
 
@@ -114,6 +115,71 @@ def test_the_wheel_actually_builds(wheel_names: set[str]) -> None:
     assert wheel_names
 
 
+def test_the_dockerfile_copies_everything_the_build_needs() -> None:
+    """**Dockerfile 的 COPY 清单必须覆盖构建真正需要的东西。**
+
+    来历：`pyproject.toml` 里写了 ``license = { file = "LICENSE" }``，
+    而 Dockerfile 只 COPY 了 ``pyproject.toml`` 和 ``README.md`` ——
+    于是容器里构建直接报
+
+        OSError: License file does not exist: LICENSE
+
+    **本地永远发现不了**（那个文件就在旁边）。这是「只有干净环境才暴露」
+    这一类里的又一个，而这一类已经出现了很多次。
+
+    判据：`pyproject.toml` 里 `readme` / `license.file` 指向的文件，
+    必须出现在 Dockerfile 的某条 COPY 里。
+    """
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+
+    needed: list[str] = []
+    readme = project.get("readme")
+    if isinstance(readme, str):
+        needed.append(readme)
+    license_field = project.get("license")
+    if isinstance(license_field, dict) and "file" in license_field:
+        needed.append(str(license_field["file"]))
+
+    assert needed, "pyproject 里既没有 readme 也没有 license.file？"
+
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    joined = " ".join(
+        line for line in dockerfile.splitlines() if line.strip().upper().startswith("COPY")
+    )
+
+    missing = [name for name in needed if name not in joined]
+    assert not missing, (
+        f"Dockerfile 没有 COPY 这些构建需要的文件：{missing} —— "
+        "容器里构建会直接失败，而本地看不出来"
+    )
+
+
+def test_the_dockerfile_runs_the_console_script_that_exists() -> None:
+    """**Dockerfile 的 CMD 必须用真的存在的命令名。**
+
+    改名那一次，`CMD ["preflight", "demo"]` 没有跟着改 ——
+    因为它是 **JSON 数组**（靠逗号分隔，不是空格），
+    一条"替换 `preflight <子命令>`"的规则命不中它。
+
+    而它的表现是**镜像构建成功、容器起不来**：
+
+        exec: "preflight": executable file not found in $PATH
+
+    这种"构建绿了、运行才炸"的失败最讨厌 ——
+    构建成功给了你一个假的安心。
+    """
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    script = next(iter(pyproject["project"]["scripts"]))
+
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    cmd_lines = [line for line in dockerfile.splitlines() if line.strip().startswith("CMD")]
+
+    assert cmd_lines, "Dockerfile 里没有 CMD"
+    assert script in cmd_lines[0], (
+        f"Dockerfile 的 CMD 里没有用命令名 `{script}`：{cmd_lines[0]} —— 容器会构建成功但起不来"
+    )
+
+
 @pytest.mark.parametrize("name", REQUIRED_IN_WHEEL)
 def test_the_wheel_contains_its_data(name: str, wheel_names: set[str]) -> None:
     """语料和 demo 素材必须真的在 wheel 里。
@@ -145,7 +211,7 @@ def test_demo_files_skips_build_artifacts(tmp_path: Path) -> None:
     而"读到字节码要跳过"是**这条代码的性质**。性质那条不会因为
     构建配置改了而失效。
     """
-    from preflight.demo import _is_source_file
+    from preflight_check.demo import _is_source_file
 
     assert _is_source_file(Path("agent.py"))
     assert _is_source_file(Path(".gitignore"))
@@ -209,12 +275,12 @@ def test_no_dead_relative_links(path: Path) -> None:
 
 def test_readme_documents_every_command() -> None:
     """README 必须提到每一个 CLI 命令 —— 否则它算不上"陌生人能看懂"。"""
-    from preflight.cli import app
+    from preflight_check.cli import app
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     commands = {
         command.name or command.callback.__name__.removesuffix("_cmd")
         for command in app.registered_commands
     }
-    missing = sorted(name for name in commands if f"preflight {name}" not in readme)
+    missing = sorted(name for name in commands if f"preflight-check {name}" not in readme)
     assert not missing, f"README 里没提到这些命令：{missing}"

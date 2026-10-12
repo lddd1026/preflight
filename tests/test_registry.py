@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from preflight.core.registry import DEFAULT_KNOWLEDGE_ROOT, Knowledge, load_knowledge
+from preflight_check.core.registry import DEFAULT_KNOWLEDGE_ROOT, Knowledge, load_knowledge
 from sample_knowledge import VALID_PROFILE, VALID_RULE, base_files, write_knowledge
 
 
@@ -195,13 +195,13 @@ def test_no_profile_has_a_noop_include(shipped: Knowledge) -> None:
 
 
 def _applies_public(rule_side: object, profile_side: object) -> bool:
-    from preflight.core.registry import _applies
+    from preflight_check.core.registry import _applies
 
     return _applies(rule_side, profile_side)  # type: ignore[arg-type]
 
 
 def _audience_public(rule_side: object, profile_side: object) -> bool:
-    from preflight.core.registry import _audience_matches
+    from preflight_check.core.registry import _audience_matches
 
     return _audience_matches(rule_side, profile_side)  # type: ignore[arg-type]
 

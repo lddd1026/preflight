@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from preflight.detect.repo import Repo
+from preflight_check.detect.repo import Repo
 from sample_knowledge import write_knowledge
 
 

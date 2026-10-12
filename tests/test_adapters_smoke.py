@@ -27,10 +27,10 @@ from pathlib import Path
 
 import pytest
 
-from preflight.core.models import Severity
-from preflight.core.registry import load_knowledge
-from preflight.detect.adapters.base import find_tool
-from preflight.detect.engine import run_path
+from preflight_check.core.models import Severity
+from preflight_check.core.registry import load_knowledge
+from preflight_check.detect.adapters.base import find_tool
+from preflight_check.detect.engine import run_path
 from sample_knowledge import write_knowledge
 
 KNOWLEDGE = load_knowledge()

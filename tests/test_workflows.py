@@ -177,11 +177,11 @@ def test_console_script_name_is_the_one_documented() -> None:
     很容易只改了一边。
     """
     scripts = PYPROJECT["project"]["scripts"]
-    assert list(scripts) == ["preflight"], f"命令名变了：{list(scripts)}"
+    assert list(scripts) == ["preflight-check"], f"命令名变了：{list(scripts)}"
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "preflight demo" in readme
-    assert "preflight run" in readme
+    assert "preflight-check demo" in readme
+    assert "preflight-check run" in readme
 
 
 def test_version_is_declared_in_exactly_two_places() -> None:
@@ -190,7 +190,7 @@ def test_version_is_declared_in_exactly_two_places() -> None:
     两处的后果是 `preflight version` 和 PyPI 上的版本号可能不一样，
     而那种不一致在排查问题时非常误导人。
     """
-    from preflight import __version__
+    from preflight_check import __version__
 
     assert PYPROJECT["project"]["version"] == __version__, (
         f"pyproject 里是 {PYPROJECT['project']['version']}，代码里是 {__version__}"

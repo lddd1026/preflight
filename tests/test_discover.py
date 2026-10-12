@@ -20,10 +20,10 @@ from pathlib import Path
 
 import pytest
 
-from preflight.core.claims import DocExpectation, DocRole, DocRoleTable
-from preflight.core.registry import load_knowledge
-from preflight.detect.repo import Repo
-from preflight.understand.discover import (
+from preflight_check.core.claims import DocExpectation, DocRole, DocRoleTable
+from preflight_check.core.registry import load_knowledge
+from preflight_check.detect.repo import Repo
+from preflight_check.understand.discover import (
     MIN_DOC_CHARS,
     MIN_KEYWORD_HITS,
     discover_documents,
