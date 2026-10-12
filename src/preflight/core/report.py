@@ -17,11 +17,36 @@ from __future__ import annotations
 from pathlib import Path
 
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
 from preflight.core.models import Finding, Review, Severity, SkippedRule
+
+# --------------------------------------------------------------------------
+# ⚠️ 所有来自**被检查项目**的文本都必须过 escape()
+#
+# 终端报告是用 rich 的标记语法拼的（`[red]…[/red]`），而那些文本里
+# 完全可能出现方括号 —— 代码就是那样的：
+#
+#     tools[call.name](**call.args)      ← 证据里就有下标
+#     list[str] / dict[str, Any]         ← 类型注解
+#     路径里的 [推流] 之类
+#
+# 不转义的后果有两个，**第二个更严重**：
+#
+# 1. **内容被悄悄改掉**：rich 把 `[call.name]` 当成样式标签，直接**从输出里删掉**。
+#    实测就是这样：证据本该显示 `tools[call.name](**call.args)`，
+#    实际显示成 `tools(**call.args)` —— 少了下标。
+#    （对一个评审工具来说，"证据被改写"是最不能接受的一类 bug：
+#     用户看不到原始内容，也就没法核对。）
+#
+# 2. **可能直接崩**：畸形标签会让 rich 抛 MarkupError。
+#    一个被检查项目里的字符串就能让报告生成失败。
+#
+# 所以：**凡是来自项目的一律 escape，我们自己写的样式标签不 escape。**
+# --------------------------------------------------------------------------
 
 SEVERITY_LABEL: dict[Severity, str] = {
     Severity.BLOCKER: "阻断",
@@ -61,8 +86,8 @@ def render_terminal(review: Review, console: Console | None = None, *, full: boo
     header = Table.grid(padding=(0, 2))
     header.add_column(style="dim")
     header.add_column()
-    header.add_row("目标", review.target)
-    header.add_row("档案", review.profile)
+    header.add_row("目标", escape(review.target))
+    header.add_row("档案", escape(review.profile))
     header.add_row("门禁", f"{review.fail_on.value} 以上即拦截")
     header.add_row("规模", f"跑了 {len(review.findings)} 条发现，耗时 {review.duration_ms}ms")
     if review.knowledge_digest:
@@ -102,23 +127,30 @@ def _findings_table(review: Review, *, full: bool) -> Table:
     for finding in review.findings:
         style = SEVERITY_STYLE[finding.severity]
         label = SEVERITY_LABEL[finding.severity]
-        table.add_row(f"[{style}]{label}[/{style}]", finding.location, _finding_body(finding, full))
+        table.add_row(
+            f"[{style}]{label}[/{style}]",
+            # 路径来自被检查项目 → escape
+            escape(finding.location),
+            _finding_body(finding, full),
+        )
 
     return table
 
 
 def _finding_body(finding: Finding, full: bool) -> str:
-    parts = [f"[cyan]{finding.rule_id}[/cyan]", finding.message]
+    # 规则 id 是我们自己的（不用 escape），其余全部来自被检查项目 → escape
+    parts = [f"[cyan]{finding.rule_id}[/cyan]", escape(finding.message)]
     if finding.evidence:
-        parts.append(f"[dim]证据：{finding.evidence}[/dim]")
+        parts.append(f"[dim]证据：{escape(finding.evidence)}[/dim]")
     if full:
-        parts.append(f"[dim]修复：{finding.fix.strip()}[/dim]")
-        parts.append(f"[dim]血案：{finding.incident.strip()}[/dim]")
+        parts.append(f"[dim]修复：{escape(finding.fix.strip())}[/dim]")
+        parts.append(f"[dim]血案：{escape(finding.incident.strip())}[/dim]")
     return "\n".join(parts)
 
 
 def _skipped_panel(skipped: list[SkippedRule]) -> Panel:
-    lines = [f"  [yellow]•[/yellow] {entry}" for entry in skipped]
+    # 跳过原因里有工具名和路径（都来自项目/环境）→ escape
+    lines = [f"  [yellow]•[/yellow] {escape(str(entry))}" for entry in skipped]
     return Panel(
         "\n".join(lines),
         title=f"⚠ {len(skipped)} 条规则没有跑",

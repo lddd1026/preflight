@@ -186,6 +186,77 @@ def test_terminal_mentions_ignored_count() -> None:
 
 
 # --------------------------------------------------------------------------
+# ⚠️ 方括号：来自被检查项目的文本必须**原样**出现
+# --------------------------------------------------------------------------
+
+
+def test_square_brackets_in_project_content_survive() -> None:
+    """**证据里的 ``[…]`` 不能被 rich 当成样式标签吃掉。**
+
+    这是实测踩到的：一条发现的证据本该是
+
+        tools[call.name](**call.args)
+
+    而终端上显示成 ``tools(**call.args)`` —— **下标被 rich 当成标签删掉了。**
+
+    对一个评审工具来说，"证据被悄悄改写"是最不能接受的一类 bug：
+    用户看不到原始内容，也就**没法核对**。而 rich 的标记语法默认会把
+    任何 ``[xxx]`` 解释成样式。
+
+    同时这还是一条崩溃线：畸形标签（比如 ``[/foo]``）会让 rich 抛
+    ``MarkupError``，也就是**被检查项目里的一个字符串能让报告生成失败**。
+    """
+    from rich.console import Console
+
+    finding = Finding(
+        rule_id="agent/tool-exception-uncaught",
+        severity=Severity.HIGH,
+        message="工具分发 tools[call.name] 没有被 try 兜住。",
+        fix="包进 try。",
+        incident="模型编造工具名 → KeyError[len(x)]。",
+        source="tool-dispatch-guard",
+        path="src/[v2]/agent.py",
+        line=10,
+        evidence="tools[call.name](**call.args)",
+    )
+    review = _review(findings=[finding], skipped=[SkippedRule(rule_id="a/b", reason="[未知] 工具")])
+
+    console = Console(width=200, force_terminal=False, record=True)
+    render_terminal(review, console, full=True)
+    text = console.export_text()
+
+    # ① 内容原样出现
+    assert "tools[call.name](**call.args)" in text, "证据里的下标被吃掉了"
+    assert "tools[call.name] 没有被 try 兜住" in text
+    assert "src/[v2]/agent.py" in text, "路径里的方括号被吃掉了"
+    assert "[未知] 工具" in text, "跳过原因里的方括号被吃掉了"
+    assert "KeyError[len(x)]" in text, "血案里的方括号被吃掉了"
+
+    # ② 没有因为畸形标签崩掉（渲染到这一步本身就是证明）
+    assert "agent/tool-exception-uncaught" in text
+
+
+def test_pathological_brackets_do_not_crash_rendering() -> None:
+    """畸形标记**不许让渲染崩** —— 一个被检查项目里的字符串不该有这个权力。"""
+    from rich.console import Console
+
+    for payload in ["[/foo]", "[bold", "[red]没闭合", "[", "]", "[link=x]"]:
+        finding = Finding(
+            rule_id="general/demo",
+            severity=Severity.INFO,
+            message=payload,
+            fix=payload,
+            incident=payload,
+            source="text",
+            path=payload,
+            evidence=payload,
+        )
+        console = Console(width=120, force_terminal=False, record=True)
+        render_terminal(_review(findings=[finding]), console, full=True)
+        assert payload in console.export_text(), f"这个内容没有原样出现：{payload!r}"
+
+
+# --------------------------------------------------------------------------
 # 落盘
 # --------------------------------------------------------------------------
 
