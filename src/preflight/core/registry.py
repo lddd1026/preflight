@@ -39,7 +39,7 @@ from typing import Any, TypeVar
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from preflight.core.claims import ClaimMarkers, DocRoleTable
+from preflight.core.claims import ClaimMarkers, DocRoleTable, VerificationTable
 from preflight.core.models import (
     AppliesTo,
     Audience,
@@ -147,6 +147,8 @@ class Knowledge:
     #: 文档分类表（``knowledge/docs/roles.yaml``）——
     #: 文档理解层用，确定性层不碰它
     doc_roles: DocRoleTable = field(default_factory=_empty_doc_roles)
+    #: 声明 → 验证策略的映射表（``knowledge/claims/verification.yaml``）
+    verification: VerificationTable = field(default_factory=VerificationTable)
 
     # ---- 查询 ----
 
@@ -290,6 +292,8 @@ def load_knowledge(
 
     doc_roles, doc_errors = _load_doc_roles(roots)
     errors.extend(doc_errors)
+    verification, verify_errors = _load_verification(roots)
+    errors.extend(verify_errors)
     if errors:
         raise KnowledgeLoadError(errors)
 
@@ -300,6 +304,7 @@ def load_knowledge(
         profiles=buckets["profiles"],
         sources=sources,
         doc_roles=doc_roles,
+        verification=verification,
     )
 
     cross_errors = _validate_cross_references(knowledge)
@@ -310,6 +315,49 @@ def load_knowledge(
 
 
 _DOC_ROLES_RELATIVE = Path("docs") / "roles.yaml"
+_VERIFICATION_RELATIVE = Path("claims") / "verification.yaml"
+
+
+def _load_one_table(
+    roots: Sequence[Path],
+    relative: Path,
+    model: type[ModelT],
+) -> tuple[ModelT | None, list[KnowledgeError]]:
+    """加载一份单独的 YAML 表（后加载的覆盖先加载的）。
+
+    为什么这几张表不是"一个目录一个模型"那套：它们是**有序列表**
+    （分类规则的顺序、主题对应的优先级），拆成多文件之后顺序就没法保证了 ——
+    而顺序在这些数据里是正确性的一部分。
+    """
+    errors: list[KnowledgeError] = []
+    table: ModelT | None = None
+
+    for knowledge_root in roots:
+        path = knowledge_root / relative
+        if not path.is_file():
+            continue
+        try:
+            raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError as exc:
+            errors.append(KnowledgeError(path=path, field_path="", message=f"YAML 解析失败：{exc}"))
+            continue
+        try:
+            table = model.model_validate(raw)
+        except ValidationError as exc:
+            errors.extend(_translate_validation_error(path, exc))
+
+    return table, errors
+
+
+def _load_verification(roots: Sequence[Path]) -> tuple[VerificationTable, list[KnowledgeError]]:
+    table, errors = _load_one_table(roots, _VERIFICATION_RELATIVE, VerificationTable)
+    if table is None:
+        # ⚠️ 文件不存在**不是错误**（和 roles.yaml 同理）——
+        # 自定义语料目录通常不会带这张表。真正的后果是"什么都查不了"，
+        # 而那会以 UNVERIFIABLE 的形式**显式地**出现在报告里，不会被藏起来。
+        logger.debug("没有找到验证策略表，所有声明都会落到 unverifiable")
+        return VerificationTable(), errors
+    return table, errors
 
 
 def _load_doc_roles(roots: Sequence[Path]) -> tuple[DocRoleTable, list[KnowledgeError]]:

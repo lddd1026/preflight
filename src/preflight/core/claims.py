@@ -169,6 +169,181 @@ class Claim(BaseModel):
         return self.modality is ClaimModality.COMMITMENT
 
 
+class Verdict(StrEnum):
+    """一条声明核对下来是什么结果。
+
+    ## 为什么必须有第三态
+
+    只有"兑现 / 没兑现"两态的话，**"查不了"会被迫二选一** —— 而两个选择都是错的：
+
+    - 算成兑现 → 兑现率虚高，用户以为文档很准
+    - 算成没兑现 → 兑现率虚低，用户会去改一份本来没问题的文档
+
+    第三态 ``UNVERIFIABLE`` 的意思是：**我确实不知道。**
+    它既不算成功也不算失败，单独列出来。
+    """
+
+    #: 有证据支持它成立
+    HOLDS = "holds"
+    #: 有证据说明它不成立 —— 文档和代码漂移了
+    VIOLATED = "violated"
+    #: 查不了。**这不是失败**，是"我没有能力判断"
+    UNVERIFIABLE = "unverifiable"
+
+
+class Method(StrEnum):
+    """这条结论是**怎么**得出来的。**确定性优先，模型只兜底。**"""
+
+    #: 跑了已有的确定性规则（最可信）
+    RULE = "rule"
+    #: 路径 / 符号存在性检查
+    EXISTS = "exists"
+    #: 数出来的（数测试、数文件、数规则）
+    COUNT = "count"
+    #: 模型兜底 —— **最弱的一档，必须标出来**
+    LLM = "llm"
+    #: 没有可用手段
+    NONE = "none"
+
+
+class Evidence(BaseModel):
+    """一条证据的引用。**每一个字段都会被代码核对。**
+
+    ## 为什么要拆成这么细的字段
+
+    因为"证据"是这一层最容易被编造的东西，而**编造的证据读起来和真的一模一样**。
+    拆细之后每一个字段都能被独立验证：
+
+    ============  ==========================================
+    字段           怎么核对
+    ============  ==========================================
+    ``path``       文件在仓库里存在吗
+    ``line``       行号在文件长度之内吗
+    ``snippet``    这一行的内容和片段对得上吗
+    ``symbol``     这个名字在 AST 里找得到吗
+    ============  ==========================================
+
+    **任何一项对不上，整条证据作废** —— 而依赖它的结论会被降级。
+    """
+
+    path: str
+    line: int | None = None
+    snippet: str | None = None
+    symbol: str | None = None
+    note: str = ""
+
+
+class Verification(BaseModel):
+    """一条声明的核对结果。"""
+
+    claim_id: str
+    doc: str
+    quote: str
+    verdict: Verdict
+    method: Method
+    #: 一句话说清"为什么是这个结论"
+    reason: str
+    evidence: list[Evidence] = Field(default_factory=list)
+    #: 证据核对发现的问题。**非空就说明证据不成立** —— 结论会被降级。
+    guard_problems: list[str] = Field(default_factory=list)
+
+    @property
+    def trustworthy(self) -> bool:
+        """这条结论可信吗（证据都核对过了）。"""
+        return not self.guard_problems
+
+
+class FulfillmentReport(BaseModel):
+    """文档兑现率 —— 这一层的最终交付物。"""
+
+    target: str
+    docs: int = 0
+    claims: list[Verification] = Field(default_factory=list)
+
+    def by_verdict(self, verdict: Verdict) -> list[Verification]:
+        return [item for item in self.claims if item.verdict is verdict]
+
+    @property
+    def holds(self) -> int:
+        return len(self.by_verdict(Verdict.HOLDS))
+
+    @property
+    def violated(self) -> int:
+        return len(self.by_verdict(Verdict.VIOLATED))
+
+    @property
+    def unverifiable(self) -> int:
+        return len(self.by_verdict(Verdict.UNVERIFIABLE))
+
+    @property
+    def checkable(self) -> int:
+        """**真的能查的**那些 —— 兑现率的分母。
+
+        为什么分母不含"查不了的"：把"我没能力判断"算进分母，
+        等于让兑现率被一批和文档质量无关的东西拉低。
+        查不了的数量单独报出来，它反映的是**工具的能力边界**，不是文档的问题。
+        """
+        return self.holds + self.violated
+
+    @property
+    def rate(self) -> float | None:
+        """兑现率。**一条都查不了时返回 None，而不是 0。**"""
+        if self.checkable == 0:
+            return None
+        return self.holds / self.checkable
+
+    @property
+    def unverified_evidence(self) -> int:
+        """证据核对没过的条数 —— 防幻觉的核心指标。"""
+        return sum(1 for item in self.claims if item.guard_problems)
+
+    def summary_line(self) -> str:
+        rate = "—" if self.rate is None else f"{self.rate:.0%}"
+        return (
+            f"{self.docs} 份文档 / {len(self.claims)} 条声明："
+            f"兑现 {self.holds} · 漂移 {self.violated} · 查不了 {self.unverifiable}"
+            f"　→　兑现率 {rate}（分母 {self.checkable}）"
+        )
+
+
+class RuleTopic(BaseModel):
+    """一条声明主题 → 已有规则的对应。"""
+
+    rule: str
+    keywords: list[str] = Field(min_length=1)
+
+
+class CountTarget(BaseModel):
+    """一个"能精确数出来"的目标。"""
+
+    name: str
+    keywords: list[str] = Field(min_length=1)
+    globs: list[str] = Field(min_length=1)
+    #: ``test_functions`` / ``files``
+    mode: str
+    #: 数出来的口径和文档说的口径**是不是同一个**。
+    #:
+    #: ⚠️ 这一项决定了"对不上"能不能算漂移 —— 见 verify.py 的说明。
+    #: 默认 False（保守）：口径不一致时"对不上"有太多无辜的解释。
+    exact: bool = False
+
+
+class UnverifiableTopic(BaseModel):
+    """明确**不查**的主题 —— 让"查不了"有一个可读的理由。"""
+
+    keywords: list[str] = Field(min_length=1)
+    why: str
+
+
+class VerificationTable(BaseModel):
+    """声明 → 验证策略的映射表（``knowledge/claims/verification.yaml``）。"""
+
+    version: int = 1
+    rule_topics: list[RuleTopic] = Field(default_factory=list)
+    count_targets: list[CountTarget] = Field(default_factory=list)
+    unverifiable_topics: list[UnverifiableTopic] = Field(default_factory=list)
+
+
 class DocRoleRule(BaseModel):
     """一条分类规则：路径匹配 → 角色。**顺序就是优先级。**"""
 
@@ -275,10 +450,19 @@ __all__ = [
     "ClaimMarkers",
     "ClaimModality",
     "ClaimSet",
+    "CountTarget",
     "DocContentFallback",
     "DocExpectation",
     "DocFile",
     "DocRole",
     "DocRoleRule",
     "DocRoleTable",
+    "Evidence",
+    "FulfillmentReport",
+    "Method",
+    "RuleTopic",
+    "UnverifiableTopic",
+    "Verdict",
+    "Verification",
+    "VerificationTable",
 ]

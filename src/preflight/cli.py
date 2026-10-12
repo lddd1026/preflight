@@ -14,10 +14,12 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
 from preflight import __version__
+from preflight.core.claims import Claim, Verdict
 from preflight.core.models import Rule, Severity
 from preflight.core.registry import (
     Knowledge,
@@ -34,10 +36,16 @@ from preflight.detect.engine import run_path
 from preflight.detect.repo import Repo
 from preflight.runtime.budget import Budget
 from preflight.runtime.cache import ResponseCache
-from preflight.runtime.llm import DEFAULT_MODEL, LiteLLMClient, LLMBudgetExceeded
+from preflight.runtime.llm import (
+    DEFAULT_MODEL,
+    LiteLLMClient,
+    LLMBudgetExceeded,
+    OpenAICompatClient,
+)
 from preflight.runtime.trace import Tracer
 from preflight.understand.claims import extract_claims
 from preflight.understand.discover import discover_documents
+from preflight.understand.verify import verify_claims
 
 app = typer.Typer(
     name="preflight",
@@ -629,6 +637,106 @@ def claims_cmd(
         )
         for claim in result.rejected[:5]:
             console.print(f"  [dim]{claim.quote[:60]!r} —— {claim.rejected_reason}[/dim]")
+
+
+@app.command("verify")
+def verify_cmd(
+    path: Path = typer.Argument(Path("."), help="要核对的项目目录"),  # noqa: B008
+    claims: Path | None = typer.Option(  # noqa: B008
+        None,
+        "--claims",
+        help="复用之前抽好的声明（JSON）。**给了它就不会再调用模型、不再花钱**",
+    ),
+    profile: str = typer.Option("cli-oss", "--profile", "-p", help="场景档案"),
+    fmt: str = typer.Option("terminal", "--format", "-f", help="terminal / json"),
+    out: Path | None = typer.Option(None, "--out", "-o", help="把结果写到文件"),  # noqa: B008
+    model: str = typer.Option(DEFAULT_MODEL, "--model", help="模型名（--claims 时不用）"),
+    max_cost: float = typer.Option(0.50, "--max-cost", help="抽取阶段的成本上限（美元）"),
+    no_cache: bool = typer.Option(False, "--no-cache", help="不用缓存"),
+    api_key: str | None = typer.Option(
+        None, "--api-key", envvar="PREFLIGHT_API_KEY", help="不传就读环境变量"
+    ),
+) -> None:
+    """把文档声明和代码对上，算出**文档兑现率**。
+
+    ## 三条规矩
+
+    **① 查不了就说查不了。** 结果是三态：兑现 / 漂移 / **查不了**。
+    把"查不了"算成兑现会让兑现率虚高，算成漂移会让你去改一份没问题的文档 ——
+    两个都错。所以兑现率的分母**只含真的能查的**那些。
+
+    **② 结论必须带证据，而证据会被逐个字段核对。**
+    路径存在吗、行号在范围内吗、片段对得上吗、符号在 AST 里找得到吗 ——
+    任何一项对不上，结论降级。**这是防幻觉的全部意义。**
+
+    **③ 确定性优先。** 能对到一条已有规则的，直接跑它，不问模型。
+    对不上的（尤其是**否定性**断言）诚实地说「无法证明否定」。
+    """
+    knowledge = _load()
+    repo = Repo.scan(path)
+    docs = discover_documents(repo, knowledge.doc_roles)
+
+    if claims is not None:
+        # 复用已有结果：**这一步不花钱**，所以可以反复调规则、反复核对
+        payload = json.loads(claims.read_text(encoding="utf-8"))
+        extracted = [Claim.model_validate(item) for item in payload["claims"]]
+        console.print(f"[dim]复用 {_display_path(claims)} 里的 {len(extracted)} 条声明[/dim]")
+    else:
+        if not api_key:
+            console.print(
+                "[yellow]要抽取声明就得有 API key（--api-key 或 PREFLIGHT_API_KEY）；"
+                "或者用 --claims 复用之前抽好的结果（不花钱）。[/yellow]"
+            )
+            raise typer.Exit(code=2)
+        budget = Budget(max_cost_usd=max_cost)
+        extracted_set = extract_claims(
+            docs,
+            repo,
+            OpenAICompatClient(api_key=api_key),
+            markers=knowledge.doc_roles.claim_markers,
+            budget=budget,
+            cache=ResponseCache(enabled=not no_cache),
+        )
+        extracted = extracted_set.claims
+        console.print(f"[dim]{extracted_set.summary_line()}；{budget.summary_line()}[/dim]")
+
+    report = verify_claims(extracted, repo, knowledge, docs=len(docs), profile=profile)
+
+    if out is not None:
+        write_report(out, report.model_dump_json(indent=2))
+        console.print(f"[green]已写入 {_display_path(out)}[/green]")
+
+    if fmt == "json":
+        _emit_raw(report.model_dump_json(indent=2))
+        return
+
+    console.print()
+    console.print(report.summary_line())
+
+    if report.unverified_evidence:
+        console.print(
+            f"[red]⚠ {report.unverified_evidence} 条的证据**没通过核对**"
+            "（路径/行号/片段/符号有一项对不上）—— 那些结论已经被降级[/red]"
+        )
+
+    for title, verdict, style in (
+        ("漂移（文档这么说，代码不是这样）", Verdict.VIOLATED, "red"),
+        ("兑现", Verdict.HOLDS, "green"),
+        ("查不了（这不是失败，是我没有能力判断）", Verdict.UNVERIFIABLE, "yellow"),
+    ):
+        items = report.by_verdict(verdict)
+        if not items:
+            continue
+        console.print()
+        console.print(f"[{style}]{title}　{len(items)} 条[/{style}]")
+        for item in items[:12]:
+            console.print(f"  [dim]{item.doc}[/dim] {escape(item.quote[:50])}")
+            console.print(f"    {escape(item.reason[:150])}")
+            for piece in item.evidence[:2]:
+                location = piece.path + (f":{piece.line}" if piece.line else "")
+                console.print(f"    [dim]证据 {escape(location)}　{escape(piece.note[:60])}[/dim]")
+        if len(items) > 12:
+            console.print(f"  [dim]…还有 {len(items) - 12} 条[/dim]")
 
 
 def main() -> None:
