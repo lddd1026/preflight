@@ -455,11 +455,37 @@ def test_questions_are_rejected() -> None:
 def test_lead_ins_to_a_code_block_are_rejected() -> None:
     """「在 .env 里配好 key，跑：」后面跟一段 bash —— 那是操作指令。
 
-    判据是**结构**而不是措辞：以冒号结尾，且下一段非空内容是围栏代码块。
+    判据是**结构**：以冒号结尾、下一段非空内容是围栏代码块，
+    **而且句子里没有断言标记**。
     """
     content = "# 演示\n\n在 `.env` 里配好 key，跑：\n\n```bash\nfivewhys run\n```\n"
 
     assert _quote_reason(content, "在 `.env` 里配好 key，跑：") is not None
+
+
+def test_sentences_that_assert_something_before_a_code_block_are_kept() -> None:
+    """**有主语和谓语的句子不能因为"后面跟了代码块"就被拒。**
+
+    这一条是**度量召回时**补的：实测 46 条被拒的里有 7 条其实是真承诺，
+    主因就是"引出示例"那条过滤器太宽。下面三条都在断言，
+    只不过恰好后面跟了一段示例。
+
+    判据是"句子里有没有断言标记"（是/会/有/必须…）——
+    加了它，这三条留下，上面那条纯指令照样拒。
+    """
+    content = (
+        "# 演示\n\n"
+        "它会按需求 §6.1 的判分规则给每次诊断打分，并打印判定：\n\n```bash\nx\n```\n\n"
+        "触发了会记 `stop_reason`，并在轨迹里留一句可读的 `stop_note`：\n\n```bash\ny\n```\n\n"
+        "M7 的四个改进累积测量，不是各自独立对比 baseline：\n\n```bash\nz\n```\n"
+    )
+
+    assert _quote_reason(content, "它会按需求 §6.1 的判分规则给每次诊断打分，并打印判定：") is None
+    assert (
+        _quote_reason(content, "触发了会记 `stop_reason`，并在轨迹里留一句可读的 `stop_note`：")
+        is None
+    )
+    assert _quote_reason(content, "M7 的四个改进累积测量，不是各自独立对比 baseline：") is None
 
 
 def test_imperative_instructions_are_rejected() -> None:

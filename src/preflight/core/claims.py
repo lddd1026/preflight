@@ -208,6 +208,9 @@ class ClaimMarkers(BaseModel):
     imperative_starts: list[str] = Field(default_factory=list)
     #: 引用以这些结尾 → 那是**提问**
     question_ending: list[str] = Field(default_factory=list)
+    #: 出现这些 → 这句话在**断言什么**，所以即使它以冒号结尾、
+    #: 后面跟着代码块，也不算"引出示例的引导语"
+    assertion_markers: list[str] = Field(default_factory=list)
 
 
 class DocRoleTable(BaseModel):

@@ -636,7 +636,7 @@ def _structurally_implausible(
         lines = content.splitlines()
         if _inside_code_fence(lines, line):
             return "这段引用在代码块里 —— 那是示例，不是文档的断言"
-        if _leads_into_a_code_block(lines, line, stripped):
+        if _leads_into_a_code_block(lines, line, stripped, markers):
             return "这是一句引出示例的引导语（后面跟着代码块），不是断言"
         heading = _nearest_heading(lines, line)
         if heading and _PROCESS_HEADING.search(heading):
@@ -660,14 +660,29 @@ def _starts_with_imperative(quote: str, starts: list[str]) -> bool:
     return False
 
 
-def _leads_into_a_code_block(lines: list[str], line: int, quote: str) -> bool:
+def _leads_into_a_code_block(
+    lines: list[str], line: int, quote: str, markers: ClaimMarkers
+) -> bool:
     """这句话是不是"引出示例"的引导语。
 
-    形状：以冒号结尾，而且**下一段非空内容**是围栏代码块。
-    「在 `.env` 里配好 key，跑：」后面跟一段 bash —— 那是操作指令，
-    不是对系统的断言。
+    形状：以冒号结尾，**下一段非空内容**是围栏代码块，
+    而且**句子里没有任何断言标记**。
+
+    ## 最后那个条件为什么必须加
+
+    第一版只看"冒号 + 代码块"，结果**误杀了 7 条真承诺**（度量召回时发现的）：
+
+    - ✗ 「在 `.env` 里配好 key，跑：」← 指令，该拒
+    - ✓ 「**它会**按需求 §6.1 的判分规则给每次诊断打分，并打印判定：」
+    - ✓ 「触发了**会**记 `stop_reason`，并在轨迹里留一句可读的 `stop_note`：」
+    - ✓ 「M7 的四个改进累积测量，**不是**各自独立对比 baseline：」
+
+    后三条都有主语和谓语，是在**断言**，只不过恰好后面跟了一段示例。
+    判据就是"句子里有没有断言标记" —— 加了它，三条留下、第一条照样拒。
     """
     if not quote.endswith(("：", ":")):
+        return False
+    if any(mark in quote for mark in markers.assertion_markers):
         return False
     for text in lines[line:]:
         stripped = text.strip()
