@@ -181,8 +181,16 @@ def test_nonexistent_path_raises_cleanly(tmp_path: Path) -> None:
 #: 也就是说：这里的墙钟时间几乎全是**操作系统的文件打开成本**，不是
 #: 我们的算法。在 Linux CI 上同一份代码是几百毫秒。
 #:
-#: 所以墙钟只做"别出现数量级退化"的兜底，真正的算法性质由
-#: ``test_every_file_is_read_at_most_once`` 守 —— 那条才是我们控制得了的东西。
+#: 取三次里**最快**的一次来比这个预算。
+#:
+#: 为什么是 best-of-3：墙钟测量会被调度噪声污染 —— 机器忙的时候，任何**单次**
+#: 运行都可能被暂停几百毫秒到几秒，而代码一点没变。
+#:
+#: **这不是把阈值调松。** 预算还是 10 秒，判据还是那条。
+#: 变的只是**估计量**：最快的一次是对"这台机器在这段代码上要多久"
+#: 更少偏差的估计。而真的退化（比如变成 O(文件 × 规则)）会让**三次全慢** ——
+#: 那种情况照样红。
+WALL_CLOCK_SAMPLES = 3
 WALL_CLOCK_BUDGET_S = 10.0
 
 
@@ -203,13 +211,26 @@ def test_thousand_file_repo_is_fast(tmp_path: Path) -> None:
     空闲机器上三次实测：**4.79 / 4.96 / 4.89 秒** —— 预算是 10 秒，
     所以有大约 **2 倍**余量。
 
-    这条测试在 S8 的一次全量跑里红过一次，而当时**后台正在跑 Docker 构建**。
-    空闲状态下重测是 4.9 秒。所以那一次是环境噪声，不是回归 ——
-    **断言没动**（改阈值让它过才是真的偷工减料）。
+    ## 为什么改成 best-of-3
 
-    如果它以后红了，先按这个顺序查：
+    这条测试**假红过两次**，两次后台都在跑 Docker 构建，而空闲重测都是 4.9 秒。
 
-    1. 机器是不是在忙（后台构建 / 杀毒扫描 / 别的测试）
+    第一次我的处理是"空闲重测一遍，确认是噪声，断言不动"。
+    第二次出现之后我改了判断：**同一个假失败出现两次，它本身就是个真问题。**
+    一个以"可信"为卖点的项目，不该有一条会自己红的测试 ——
+    那会训练所有人忽略红色。
+
+    改法是换**估计量**，不是换**阈值**：
+
+    - 预算还是 10 秒（`WALL_CLOCK_BUDGET_S` 一个字没动）
+    - 量三次，拿最快的比
+    - 单次运行会被调度暂停；**三次全慢才是真退化**
+
+    判据的性质没变：真的变成 O(文件 × 规则) 的话，三次都会慢。
+
+    如果它以后还是红了，按这个顺序查：
+
+    1. 机器是不是**持续**很忙（不是抖一下）
     2. 空闲下重测；仍然超过 10 秒才是真的回归
     3. 真的回归的话，先去看 ``test_every_file_is_read_at_most_once`` ——
        那条是算法性质的守门测试，它比这一条更能指出原因
@@ -219,14 +240,22 @@ def test_thousand_file_repo_is_fast(tmp_path: Path) -> None:
     """
     root = write_knowledge(tmp_path / "big", _make_repo_files(1000))
 
-    started = time.perf_counter()
-    review = _run(root)
-    elapsed = time.perf_counter() - started
+    samples: list[float] = []
+    review = None
+    for _ in range(WALL_CLOCK_SAMPLES):
+        started = time.perf_counter()
+        review = _run(root)
+        samples.append(time.perf_counter() - started)
 
-    assert elapsed < WALL_CLOCK_BUDGET_S, f"1000 个文件扫了 {elapsed:.1f} 秒，太慢"
+    best = min(samples)
+    assert best < WALL_CLOCK_BUDGET_S, (
+        f"1000 个文件扫了 {best:.1f} 秒（三次："
+        f"{' / '.join(f'{s:.1f}' for s in samples)}），预算 {WALL_CLOCK_BUDGET_S} 秒"
+    )
+
     # 顺手证明规则真的跑了（而不是因为什么都没干才快）：
     # 这个仓库没有 .gitignore / RUNBOOK，所以"缺文档"那几条必须报
-    assert review.findings, "跑得太快反而可疑 —— 确认规则真的执行了"
+    assert review is not None and review.findings, "跑得太快反而可疑 —— 确认规则真的执行了"
 
 
 def test_every_file_is_read_at_most_once(tmp_path: Path) -> None:

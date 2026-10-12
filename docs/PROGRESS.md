@@ -27,9 +27,9 @@
 | **当前阶段** | **S0–S8 全部达标**；发布待定（名字冲突 + 无凭证 + 3.12 未验证） |
 | **已完成阶段** | **9 / 9**（S0–S8，其中 S8 的 PF-48 未做） |
 | **可发布版本** | **v1.0.0** —— 版本号已定、wheel 能构建、干净容器能跑；**但还没推到 PyPI** |
-| **测试总数** | **531 passed + 3 skipped**（本地）· **511 + 5**（Linux / Python 3.11，**改名之前测的**） |
+| **测试总数** | **543 + 3**（Windows/3.13）· **541 + 5**（Linux/3.11）· **541 + 5**（Linux/3.12） |
 | **语料** | 29 条规则 · 10 个机制（48 格）· 6 条不变量 · 4 个档案 · 5 条必答 + 4 条条件展开 |
-| **最后更新** | 2026-10-11（纪律审计：D1/D3/D4 机械化） |
+| **最后更新** | 2026-10-11（验证模块化与可扩展性 + 补跑 3.12） |
 
 ---
 
@@ -1999,7 +1999,7 @@ ModuleNotFoundError: No module named 'preflight'   ← 不再撞车 ✓
 
 ```
 $ python -m pytest
-531 passed, 3 skipped
+543 passed, 3 skipped
 $ docker run --rm preflight-check
 preflight demo　档案 agent-enterprise　（零 LLM、零联网）
 🔴 broken-agent　15 条发现（agent 专项 14 条）　判定 NO-GO
@@ -2007,6 +2007,132 @@ preflight demo　档案 agent-enterprise　（零 LLM、零联网）
 ```
 
 **发布路上剩下的只有凭证了** —— 没有技术障碍。
+
+### 补充轮次（round 14）：**验证「模块化 / 可扩展性」这两个声称**
+
+项目在两个地方做了很硬的声称：
+
+> `PROGRESS.md`：**知识是数据，加规则不改代码。**
+> `STATUS.md`：44 个源文件 / 52 个语料 YAML。
+
+**声称就要能被验证。** 这一轮把它们变成测试，并补上没跑过的 Python 版本。
+
+#### ① 环境验证：从 1.5 个组合变成 3 个
+
+| 组合 | 之前 | 现在 |
+| --- | --- | --- |
+| Windows / 3.13 | ✅ 543 + 3 | ✅ **543 + 3** |
+| Linux / 3.11 | ⚠️ 改名前的旧数字 | ✅ **541 + 5**（改名后复验） |
+| Linux / 3.12 | ❌ **从没跑过** | ✅ **541 + 5**（第一次！） |
+| Windows / 3.11 · 3.12 | ❌ | ❌ 本机没有别的 Python |
+
+**3.12 是第一次被验证。** 它一直在 CI 矩阵里，而 CI 一次没跑过 ——
+也就是说「声明支持 3.12」这句话，之前是**没有证据**的。
+
+#### ② 模块化：用 AST 读真实的依赖图
+
+不是照文档说，是**读代码**。结果：
+
+```
+cli(5)  → core(17) demo(1) detect(4) interact(9) runtime(7) understand(3)
+understand(3) → core(27) detect(5) runtime(8)
+detect(2) → core(24)
+interact(4) → core(12)
+```
+
+**没有一条向上依赖，也没有环。** `cli` 是唯一的组合根。
+
+变成了 5 条测试：
+
+| 测试 | 守什么 |
+| --- | --- |
+| `test_every_package_is_classified` | **新加一个包必须声明层级** —— 不声明就会被默默跳过，而那正是分层开始腐烂的地方 |
+| `test_there_are_no_upward_dependencies` | 低层 import 高层 = 它们其实是一个模块 |
+| `test_the_import_graph_has_no_cycles` | **同层之间**的环 —— 分层检查放行，但它们又粘在一起 |
+| `test_the_cli_is_the_only_thing_that_knows_every_layer` | 只有组合根认识所有层 |
+| （反向）谁都不该认识 `interact` | 下层不该依赖人工层 |
+
+#### ③ 可扩展性：**真的加一遍**
+
+光验证依赖图不够 —— 那只能说明"没有乱 import"，
+不能说明"加东西真的不用改代码"。所以真的加了一遍：
+
+| 测试 | 加什么 | 证明了什么 |
+| --- | --- | --- |
+| `test_adding_a_rule_needs_only_yaml` | 一条**语料里不存在**的规则 | 引擎里没有"认识某条规则"的分支 |
+| `test_adding_a_mechanism_needs_only_yaml` | 一个新机制（带探测线索 + 矩阵格子） | 探测认得它、推导产出它的格子、推理链完整 |
+| `test_adding_an_invariant_needs_only_yaml` | 一条新不变量 | 矩阵格子数跟着变（机制 × 不变量） |
+| `test_adding_a_profile_needs_only_yaml` | 一个新档案 | 它**真的改变选中哪些规则**，不是装饰 |
+| `test_include_pulls_a_rule_across_the_boundary_as_data` | 一行 `include` | 跨边界靠数据，不是 `if profile == "xxx"` |
+
+**全部一行 Python 都没改。**
+
+#### ④ 边界：什么**必须**改代码 —— 而且失败要清楚
+
+「不用改代码」不是无限的：**加一个全新的检测能力**必须改代码。
+那是设计，不是缺陷 —— 但边界必须**显式**：
+
+| 测试 | 守什么 |
+| --- | --- |
+| `test_an_unknown_checker_fails_at_load_with_a_clear_message` | 写错 checker 名字 → **加载期**报错，并**列出全部可选项** |
+| `test_a_rule_must_say_which_checker_it_uses` | 不许靠猜 —— 一个 kind 下可能有好几个 checker |
+| `test_every_shipped_rule_names_a_real_checker` | 出厂语料里没有指向不存在 checker 的规则 |
+
+真实的报错长这样：
+
+```
+detect.checker  没有叫 'totally-made-up-checker' 的检查器。
+全部可用：agent-loop-guard, config-name-drift, cost-source, exists, gitl…
+```
+
+**静默失败是最坏的一种**：规则看起来配好了、跑起来不报、
+于是所有人以为"查过了，没问题"。
+
+#### 这一轮发现的缺陷（**全是我自己测试写错了**）
+
+| # | 问题 | 教训 |
+| --- | --- | --- |
+| 1 | `KnowledgeError` 是**逐条错误的记录**（dataclass），异常叫 `KnowledgeLoadError` | 同名/近名的两个类型，import 时看不出来 |
+| 2 | `KnowledgeLoadError.__str__` **只是一句汇总**（"1 个语料错误"），细节在结构化的 `.errors` 里 | 断言读错了对象 —— 和 round 12 那条 `sys.modules` 同一个病 |
+| 3 | **`kind: agent` 不是合法的 `DetectKind`** | 合法的是 `ast`/`text`/`exists`/`adapter`/`doc`/`manual`。我照"应该是什么"写了夹具，而没去读一条真规则 |
+| 4 | **引号穿过 heredoc 被吃掉**，两次字符串替换静默没生效 | 这个坑 **round 12 刚踩过**（`$n` 被 PowerShell 展开）。**这次是第二次** |
+| 5 | **计时测试假红两次** | 见下 |
+
+#### 关于第 5 条：我改了判断
+
+计时测试（`test_thousand_file_repo_is_fast`）**第二次**在后台跑 Docker 时红了。
+
+**第一次**我的处理是：空闲重测（4.79/4.96/4.89 秒），确认是噪声，**断言不动**。
+那是对的。
+
+**第二次**出现之后，我改了判断：
+
+> **同一个假失败出现两次，它本身就是个真问题。**
+
+一个以「可信」为全部卖点的项目，不该有一条会自己红的测试 ——
+**那会训练所有人忽略红色**，而红色是这个项目唯一的信号。
+
+改法是换**估计量**，不是换**阈值**：
+
+| | 改之前 | 改之后 |
+| --- | --- | --- |
+| 预算 | 10.0 秒 | **10.0 秒（一个字没动）** |
+| 测量 | 单次 | **三次取最快** |
+| 理由 | —— | 单次运行会被调度暂停；**三次全慢才是真退化** |
+
+判据的性质没变：真的变成 O(文件 × 规则) 的话，三次都会慢。
+D3 的绊线测试仍然锁着 `WALL_CLOCK_BUDGET_S = 10.0`。
+
+#### 这一轮之后的状态
+
+```
+本地 Windows / 3.13    543 passed + 3 skipped
+Linux    / 3.11        541 passed + 5 skipped
+Linux    / 3.12        541 passed + 5 skipped
+```
+
+**CI 仍然一次没跑过** —— 但 CI 会跑的那三个组合，
+现在都在等价环境里真实验证过了。
 
 ### 任务结果（累计）
 

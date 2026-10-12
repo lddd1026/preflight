@@ -27,7 +27,7 @@
 | --- | --- | --- |
 | 提交 | **16** | `git rev-list --count HEAD` |
 | 源码（不含 demo） | **44 个 .py / 13034 行** | `find src -name '*.py' -not -path '*/demo/*'` |
-| 测试 | **29 个 .py / 9153 行** | `ls tests/*.py` |
+| 测试 | **30 个 .py** | `ls tests/*.py` |
 | 演示素材 | 19 个 .py | `find src -path '*/demo/*' -name '*.py'` |
 | 语料 | **52 个 YAML** | `find src -name '*.yaml'` |
 | 文档 | 6 个（见文末） | `ls docs/` |
@@ -35,16 +35,29 @@
 
 ### 测试
 
-| 环境 | 结果 |
+**CI 矩阵有 6 个组合，其中 3 个已经真实跑过。** 没跑过的那 3 个
+需要本机装别的 Python（或者真的要 CI）。
+
+| 组合 | 结果 |
 | --- | --- |
-| **本地 Windows / Python 3.13** | **531 passed + 3 skipped**（90 秒）—— 每加一份文档会多一条死链检查 |
-| **Linux / Python 3.11**（容器） | **511 + 5 skipped** ⚠️ **见下面的说明** |
-| Linux / Python 3.12 | ❌ **从没跑过** |
-| Windows / 3.11 / 3.12 | ❌ **从没跑过** |
+| **Windows / Python 3.13**（本地） | ✅ **543 passed + 3 skipped** |
+| **Linux / Python 3.11**（容器） | ✅ **541 + 5 skipped** |
+| **Linux / Python 3.12**（容器） | ✅ **541 + 5 skipped** ← **第一次跑** |
+| Windows / 3.11 | ❌ 没跑过（本机没有这个 Python） |
+| Windows / 3.12 | ❌ 没跑过 |
+| macOS | — CI 里没有这个组合 |
 | mypy | 44 个文件，**无错误** |
 | ruff check / format | **干净** |
 
-**3 个 skip 是什么**（`pytest -rs`）：
+> **3.12 是这一轮第一次真的跑起来。** 它一直写在 CI 矩阵里，
+> 而 CI 一次没跑过 —— 所以「声明支持 3.12」这句话之前是**没有证据**的。
+>
+> **3.11 也在改名之后重跑了一遍**（之前那个数字是改名前的，
+> 我在上一版里明确标着"不算数"）。
+
+容器里多 2 个 skip 是因为两个适配器冒烟测试的判定条件不同。
+
+**本地这 3 个 skip 是什么**（`pytest -rs`）：
 
 ```
 SKIPPED  pip-audit 没装（可选依赖），跳过真实冒烟
@@ -55,11 +68,42 @@ SKIPPED  got empty parameter set for (rule_id)     ← 没有"未实现"的规�
 > 前两条是**设计上的**：那两个工具是可选依赖，没装时对应规则明确报「跳过」，
 > 而不是假装通过。第三条说明**22 个检查器全部有实现**，没有占位。
 
-> ⚠️ **Python 3.11 那一行是改名之前测的。**
-> 改名（`preflight` → `preflight_check`）之后我试着复验，**连续 10 次装依赖全部失败** ——
-> 本机到 PyPI 的网络反复 `SSL: UNEXPECTED_EOF` / `ChunkedEncodingError`。
-> **那是环境问题，不是测试结果**，所以我把它标成「改名前的测量」而不是"通过"。
-> 3.12 同理：CI 矩阵里有它，但**一次都没真的跑过**。
+### 模块化与可扩展性（12 条测试守着）
+
+这两个性质是**同一件事的两面**：加东西不用改代码，是因为模块之间没有乱牵。
+
+**依赖图**（用 AST 读真实 import，不是照文档说）：
+
+```
+cli(5)         → core  demo  detect  interact  runtime  understand
+understand(3)  → core  detect  runtime
+detect(2)      → core
+interact(4)    → core
+```
+
+**没有向上依赖，也没有环。** `cli` 是唯一的组合根。
+
+**可扩展性是真的加过一遍验证的**，不是推断的：
+
+| 加什么 | 要改代码吗 |
+| --- | --- |
+| 一条规则 | ❌ 只写 YAML |
+| 一个机制（带探测线索 + 矩阵格子） | ❌ 只写 YAML |
+| 一条不变量 | ❌ 只写 YAML |
+| 一个档案 | ❌ 只写 YAML |
+| 跨档案拉一条规则（`include`） | ❌ 只写 YAML |
+| **一个全新的检测能力** | ✅ **要写代码** —— 检查器就是「怎么查」，它得有实现 |
+
+最后一行是**设计，不是缺陷**，但边界必须**显式**：写错 checker 名字会在
+**加载期**报错，并列出全部可选项 ——
+
+```
+detect.checker  没有叫 'totally-made-up-checker' 的检查器。
+全部可用：agent-loop-guard, config-name-drift, cost-source, exists, …
+```
+
+**静默失败是最坏的一种**：规则看起来配好了、跑起来不报，
+于是所有人以为「查过了，没问题」。
 
 ### 语料
 
