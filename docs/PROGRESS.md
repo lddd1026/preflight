@@ -14,6 +14,10 @@
 4. 任务状态用 `[ ]` 待办 / `[~]` 进行中 / `[x]` 完成 / `[!]` 受阻。
 5. **一次只允许一个阶段处于进行中。**
 
+> **本文档是过程记录，不是状态快照。** 想看「现在什么状态」→
+> [STATUS.md](STATUS.md)：数字、阶段表、纪律表、未完成的事，一句话一条。
+> 两者分工：**PROGRESS 记「怎么走到这里的」，STATUS 记「现在站在哪」。**
+
 ---
 
 ## 当前状态
@@ -23,7 +27,7 @@
 | **当前阶段** | **S0–S8 全部达标**；发布待定（名字冲突 + 无凭证 + 3.12 未验证） |
 | **已完成阶段** | **9 / 9**（S0–S8，其中 S8 的 PF-48 未做） |
 | **可发布版本** | **v1.0.0** —— 版本号已定、wheel 能构建、干净容器能跑；**但还没推到 PyPI** |
-| **测试总数** | **528 passed + 3 skipped**（本地）· **511 + 5**（Linux / Python 3.11） |
+| **测试总数** | **531 passed + 3 skipped**（本地）· **511 + 5**（Linux / Python 3.11，**改名之前测的**） |
 | **语料** | 29 条规则 · 10 个机制（48 格）· 6 条不变量 · 4 个档案 · 5 条必答 + 4 条条件展开 |
 | **最后更新** | 2026-10-11（纪律审计：D1/D3/D4 机械化） |
 
@@ -1995,7 +1999,7 @@ ModuleNotFoundError: No module named 'preflight'   ← 不再撞车 ✓
 
 ```
 $ python -m pytest
-530 passed, 3 skipped
+531 passed, 3 skipped
 $ docker run --rm preflight-check
 preflight demo　档案 agent-enterprise　（零 LLM、零联网）
 🔴 broken-agent　15 条发现（agent 专项 14 条）　判定 NO-GO
