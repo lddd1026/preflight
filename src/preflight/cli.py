@@ -32,7 +32,9 @@ from preflight.core.report import (
     render_terminal,
     write_report,
 )
+from preflight.detect.derive import derive_checks
 from preflight.detect.engine import run_path
+from preflight.detect.probe import probe_mechanisms
 from preflight.detect.repo import Repo
 from preflight.runtime.budget import Budget
 from preflight.runtime.cache import ResponseCache
@@ -737,6 +739,116 @@ def verify_cmd(
                 console.print(f"    [dim]证据 {escape(location)}　{escape(piece.note[:60])}[/dim]")
         if len(items) > 12:
             console.print(f"  [dim]…还有 {len(items) - 12} 条[/dim]")
+
+
+@app.command("mechanisms")
+def mechanisms_cmd(
+    path: Path = typer.Argument(Path("."), help="要探测的项目目录"),  # noqa: B008
+    fmt: str = typer.Option("terminal", "--format", "-f", help="terminal / json"),
+    full: bool = typer.Option(False, "--full", help="把每一条的完整推理链都打出来"),
+) -> None:
+    """探测项目里有哪些**机制**，并推导出该查什么。
+
+    ## 为什么是"机制"而不是"项目类别"
+
+    项目类别是无穷的：聊天、电商、支付、IoT、游戏、编辑器、爬虫、编译器……
+    按类别写检查表永远覆盖不全。
+
+    而**会坏的东西就那么几种**：队列、数据库、缓存、长连接、定时任务、
+    对象存储、外部 API、搜索索引、多区域、LLM 调用。十个。
+
+    一个聊天系统和一个支付系统看起来完全不同，但它们坏起来是同一批地方。
+
+    ## 每条结论都带推理链
+
+    因为**推理链是这个产品的核心价值** —— 用户要能判断我们判断错了。
+    一个"检查项列表"没有这个价值：用户不知道那些项从哪来。
+    """
+    knowledge = _load()
+    repo = Repo.scan(path)
+    outcome = probe_mechanisms(repo, knowledge)
+    derivation = derive_checks(outcome.hits, knowledge)
+
+    if fmt == "json":
+        _emit_raw(
+            json.dumps(
+                {
+                    "detected": outcome.detected,
+                    "uncertain": [entry.mechanism.id for entry in outcome.uncertain],
+                    "questionnaire": outcome.questionnaire,
+                    "checks": [
+                        {
+                            "mechanism": check.mechanism,
+                            "invariant": check.invariant,
+                            "checks": check.checks,
+                            "rule": check.rule,
+                            "chain": check.chain,
+                        }
+                        for check in derivation.checks
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+
+    if outcome.nothing_detected:
+        # **探测不到不是失败** —— 它意味着"我们不知道这个项目有什么"，
+        # 而那时唯一诚实的做法是问人，不是猜一个机制。
+        console.print("[yellow]一个机制都没探测到。[/yellow]")
+        console.print("[dim]这不是失败 —— 是「我们不知道这个项目有什么」。[/dim]")
+        console.print()
+        console.print("按**不变量**问几个问题（不是按行业问）：")
+        for question in outcome.questionnaire:
+            console.print(f"  [cyan]·[/cyan] {escape(question)}")
+        return
+
+    table = Table(header_style="bold")
+    table.add_column("机制", style="cyan", no_wrap=True)
+    table.add_column("可信度", no_wrap=True)
+    table.add_column("最强的线索")
+    for hit in outcome.hits:
+        table.add_row(hit.mechanism.name, hit.confidence, escape(hit.hits[0].describe()))
+    console.print(table)
+
+    if outcome.uncertain:
+        console.print()
+        console.print(
+            f"[yellow]{len(outcome.uncertain)} 个机制只有弱线索 —— **不算探测到**：[/yellow]"
+        )
+        for entry in outcome.uncertain:
+            console.print(
+                f"  [dim]{entry.mechanism.name}：{escape(entry.hits[0].describe())}[/dim]"
+            )
+        console.print("[dim]弱线索不算探测到：符号名会撞车，文档提到一个机制也不等于用了它。[/dim]")
+
+    console.print()
+    console.print(derivation.summary_line())
+
+    console.print()
+    console.print("[bold]推导出来的检查项[/bold]（带推理链）")
+    shown = derivation.checks if full else derivation.checks[:6]
+    for check in shown:
+        console.print()
+        console.print(f"[cyan]{escape(check.render('  '))}[/cyan]")
+    if not full and len(derivation.checks) > len(shown):
+        console.print()
+        console.print(
+            f"[dim]…还有 {len(derivation.checks) - len(shown)} 条，用 --full 看全部[/dim]"
+        )
+
+    if derivation.uncovered:
+        console.print()
+        console.print(
+            f"[yellow]{len(derivation.uncovered)} 条检查项**还没有规则覆盖** —— "
+            "那是没人管的风险区[/yellow]"
+        )
+        for check in derivation.uncovered[:8]:
+            console.print(
+                f"  [dim]{check.mechanism_name} × {check.invariant_name}："
+                f"{escape('、'.join(check.checks))}[/dim]"
+            )
 
 
 def main() -> None:

@@ -48,3 +48,34 @@ probes:
       - generate_content
       - ChatOpenAI
     why: 调用点符号。用于识别那些自己包了一层 client 的项目
+
+cells:
+  - invariant: no-loss
+    checks:
+      - 轨迹落盘（每步 prompt / 工具 / 结果）
+    why: agent 出错时**唯一能复盘的东西就是轨迹** ——
+      而"没记"和"没发生"在事后完全无法区分
+  - invariant: no-duplicate
+    checks:
+      - 重试幂等（有副作用的工具）
+    why: 模型重试一次工具调用，而那个工具有副作用（发邮件、下单）
+  - invariant: ordering
+    checks:
+      - 工具调用与结果配对
+    why: 一轮里调了 3 个工具、回来 2 个结果 —— 配错对会让模型基于错的前提推理
+  - invariant: no-unauthorized
+    checks:
+      - 工具权限边界
+      - 高风险动作人工确认
+    why: "\"**工具名是模型生成的** —— 而模型不知道哪些动作不可逆"
+  - invariant: no-leak
+    checks:
+      - 密钥不进日志
+      - 输入不外传训练
+    why: 轨迹里原样存着每一步的 prompt，而 prompt 里常常带着用户的原文
+  - invariant: no-overrun
+    checks:
+      - 成本 / token 上限
+      - 上下文预算
+      - 最大输出限制
+    why: 前两个是**唯一能主动设的成本上限**，第三个是单次调用唯一能设的

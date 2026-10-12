@@ -1,0 +1,43 @@
+id: cache
+name: 缓存
+why_it_breaks: 击穿、穿透、脏数据、键不含租户维度
+probes:
+  - kind: dependency
+    any_of:
+      - redis
+      - aioredis
+      - memcache
+      - pymemcache
+      - valkey
+      - django-redis
+    why: 缓存客户端出现在依赖里
+  - kind: env_template
+    any_of:
+      - REDIS_URL
+      - CACHE_URL
+      - MEMCACHE_SERVERS
+    why: 连接串是最直接的证据
+  - kind: config_file
+    any_of:
+      - redis
+      - memcached
+    why: 编排文件里有缓存镜像
+
+cells:
+  - invariant: no-loss
+    checks:
+      - 缓存挂了降级行为已定义
+    why: 缓存是"加速器"还是"数据源"，决定了它挂了要不要停服 ——
+      而很多项目从没回答过这个问题
+  - invariant: no-unauthorized
+    checks:
+      - 缓存键含租户 / 用户维度
+    why: "\"**缓存越权比数据库越权更隐蔽**：键里少一个维度， 别人的数据就被当成你的返回了，而且不会有任何报错"
+  - invariant: no-leak
+    checks:
+      - 缓存不放敏感数据
+    why: 缓存通常没有数据库那套访问控制和加密
+  - invariant: no-overrun
+    checks:
+      - 缓存击穿保护
+    why: 缓存过期瞬间的并发量会**原样打到数据库**上

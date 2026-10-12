@@ -38,11 +38,12 @@ def test_shipped_corpus_loads(shipped: Knowledge) -> None:
     S0 加 ``general/env-not-ignored`` → 4 条；
     S1 补齐 11 条通用规则 → 13 条；
     S2 加 3 条适配器规则 → 16 条；
-    S3 补齐 14 条 agent 规则 → **29 条**。）
+    S3 补齐 14 条 agent 规则 → 29 条；
+    S6 补齐 10 个机制 → **10 个机制**。）
     """
     assert shipped.counts == {
         "invariants": 6,
-        "mechanisms": 3,
+        "mechanisms": 10,
         "rules": 29,
         "profiles": 3,
     }
@@ -84,6 +85,19 @@ def test_shipped_rules_are_the_expected_ones(shipped: Knowledge) -> None:
         # 矩阵规则 1 条（机制 × 不变量）
         "message-queue/no-loss-backlog-recovery",
     }
+
+
+def test_matrix_cells_match_the_shipped_mechanisms(shipped: Knowledge) -> None:
+    """PF-36：KNOWLEDGE.md 的 v1 矩阵（10 机制 × 6 不变量）必须**数据化**。
+
+    60 个格子里有 48 个写着要求（其余 12 格本来就标 `—`，即"这个组合没有
+    额外要求"）—— 所以断言的是"每个机制都有格子"，而不是"60 格全满"。
+    """
+    assert len(shipped.mechanisms) == 10
+    assert len(shipped.invariants) == 6
+
+    for mechanism in shipped.mechanisms.values():
+        assert mechanism.cells, f"{mechanism.id} 在矩阵里一格都没有"
 
 
 def test_every_shipped_rule_has_a_source_file(shipped: Knowledge) -> None:
@@ -222,9 +236,13 @@ def test_selection_is_sorted_by_severity(make_knowledge: Any) -> None:
 
 
 def test_matrix_view_enumerates_every_cell(shipped: Knowledge) -> None:
-    """矩阵必须给出**全部**机制 × 不变量的组合，不只是有规则的那些。"""
+    """矩阵必须给出**全部**机制 × 不变量的组合，不只是有规则的那些。
+
+    写成性质而不是具体数字：机制数会随阶段变（S6 从 3 涨到 10），
+    而"全给出来"这件事不该随阶段变。
+    """
     cells = shipped.matrix_view()
-    assert len(cells) == 3 * 6
+    assert len(cells) == len(shipped.mechanisms) * len(shipped.invariants)
 
     combos = {(cell.mechanism, cell.invariant) for cell in cells}
     assert len(combos) == len(cells), "矩阵里有重复的格子"

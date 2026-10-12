@@ -28,3 +28,29 @@ probes:
       - publish
     why: 代码里出现的生产/消费符号。这是三者里最弱的一条，容易误报，
       所以只作为补充线索
+
+cells:
+  - invariant: no-loss
+    checks:
+      - 积压恢复测试
+      - 消费者 ack 时机
+      - 死信队列处理
+    why: 消息被消费到一半时进程挂了 —— 那条消息还在不在？
+  - invariant: no-duplicate
+    checks:
+      - 消费者幂等（去重键 / 唯一约束）
+    why: 至少一次投递是常态，"正好一次"要靠消费端自己去重
+  - invariant: ordering
+    checks:
+      - 分区键保证同会话有序
+      - 跨分区乱序断言
+    why: 分区之后顺序只在分区内保证 —— 而业务常常需要跨分区有序
+  - invariant: no-leak
+    checks:
+      - 消息体是否含 PII
+    why: 队列常被当成"内部通道"，于是敏感数据就那么过去了
+  - invariant: no-overrun
+    checks:
+      - 积压告警
+      - 消费速率监控
+    why: 积压不报警，等于容量问题只能等到用户投诉

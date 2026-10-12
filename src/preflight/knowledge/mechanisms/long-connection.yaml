@@ -26,3 +26,27 @@ probes:
       - proxy_read_timeout
       - upgrade
     why: 反向代理的配置里出现超时/升级设置，说明前面挂着长连接
+
+cells:
+  - invariant: no-loss
+    checks:
+      - 重连补发机制 + 测试
+    why: "\"**断线期间的消息去哪了** —— 这是长连接最常被忽略的一段"
+  - invariant: no-duplicate
+    checks:
+      - 客户端按消息 ID 去重
+    why: 补发 + 实时推送重叠时，同一条消息会到两次
+  - invariant: ordering
+    checks:
+      - 顺序号分配 + 测试
+    why: 重连之后的新连接和旧连接可能同时活着
+  - invariant: no-unauthorized
+    checks:
+      - 连接建立时鉴权
+    why: 鉴权只在建立时做一次，而连接可能活几小时 ——
+      期间用户的权限可能已经被撤销了
+  - invariant: no-overrun
+    checks:
+      - 连接数上限
+      - 重连风暴退避
+    why: "\"**重连风暴**：服务恢复的瞬间所有客户端同时重连， 把刚起来的服务再打挂一次"

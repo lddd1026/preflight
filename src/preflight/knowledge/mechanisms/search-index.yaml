@@ -1,0 +1,37 @@
+id: search-index
+name: 搜索引擎
+why_it_breaks: 索引不同步、文档级权限过滤缺失、索引里留敏感数据
+probes:
+  - kind: dependency
+    any_of:
+      - elasticsearch
+      - opensearch-py
+      - meilisearch
+      - typesense
+      - pysolr
+      - whoosh
+    why: 搜索客户端出现在依赖里
+  - kind: env_template
+    any_of:
+      - ELASTICSEARCH_URL
+      - OPENSEARCH_URL
+      - MEILISEARCH_URL
+    why: 连接串是最直接的证据
+
+cells:
+  - invariant: no-loss
+    checks:
+      - 索引重建能力
+    why: 索引坏掉时，**能不能从主数据重建**决定了它是一次故障还是一次事故
+  - invariant: no-unauthorized
+    checks:
+      - 文档级权限过滤
+    why: "\"**搜索接口常常绕过业务层的权限检查** —— 它直接查索引， 而索引里没有\"这个人能不能看这条\"的信息"
+  - invariant: no-leak
+    checks:
+      - 索引里有无敏感字段
+    why: 为了"搜索体验"把整条记录塞进索引，包括不该被搜到的字段
+  - invariant: no-overrun
+    checks:
+      - 索引大小
+    why: 索引膨胀比数据库膨胀更难察觉

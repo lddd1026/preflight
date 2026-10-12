@@ -1,0 +1,67 @@
+id: relational-db
+name: 关系数据库
+why_it_breaks: 连接池耗尽、事务隔离、迁移不可逆、租户数据串号
+probes:
+  - kind: dependency
+    any_of:
+      - psycopg2
+      - psycopg
+      - asyncpg
+      - sqlalchemy
+      - django
+      - alembic
+      - pymysql
+      - asyncmy
+      - sqlmodel
+      - prisma
+    why: ORM / 驱动出现在依赖里，说明这个项目有自己维护的表
+  - kind: env_template
+    any_of:
+      - DATABASE_URL
+      - POSTGRES_DSN
+      - MYSQL_URL
+      - DB_HOST
+      - SQLALCHEMY_DATABASE_URI
+    why: 连接串是最直接的证据
+  - kind: config_file
+    any_of:
+      - postgres
+      - mysql
+      - mariadb
+    why: 编排文件里出现数据库镜像，说明它是部署的一部分
+  - kind: ast_symbol
+    any_of:
+      - create_engine
+      - sessionmaker
+      - Base
+    why: 代码里的 ORM 入口。最弱的一条，只作补充
+
+cells:
+  - invariant: no-loss
+    checks:
+      - 备份策略存在
+      - 恢复演练记录
+    why: "**没演练过的备份等于没有备份** —— 而「我们每天备份」这句话只有演练过才可信"
+  - invariant: no-duplicate
+    checks:
+      - 唯一约束
+      - 幂等写入
+    why: 重试是常态，而重试 + 非幂等写入 = 两条记录
+  - invariant: ordering
+    checks:
+      - 事务隔离级别明确
+    why: 默认隔离级别在不同数据库上不一样，而"默认"不是设计
+  - invariant: no-unauthorized
+    checks:
+      - 行级 / 租户隔离
+      - ORM 查询漏 tenant_id
+    why: "\"**多租户系统最经典的越权**：一次忘写 where 就是全量数据"
+  - invariant: no-leak
+    checks:
+      - 敏感字段加密
+      - 备份也加密
+    why: 备份文件经常比主库更容易被拿到
+  - invariant: no-overrun
+    checks:
+      - 连接池上限
+    why: 连接池耗尽的典型形态是"一个慢查询拖垮整个服务"

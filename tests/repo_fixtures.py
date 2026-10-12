@@ -93,6 +93,69 @@ DOCS_MUST_NOT_APPEAR: tuple[str, ...] = (
     ".pytest_cache/README.md",
 )
 
+
+# --------------------------------------------------------------------------
+# 三个不同技术栈的项目 —— 机制探测的夹具
+#
+# ## 为什么要三份，而且技术栈不同
+#
+# 这一层的核心主张是「**按机制 × 不变量检查，而不是按项目类别检查**」。
+# 要证明它，就得让三份**看起来完全不同**的项目推导出**不同**的结果 ——
+# 如果三份的结果一样，那说明我们其实没在看机制。
+#
+# 三份都用**强线索**（依赖清单 + 环境模板）：
+# 弱线索不算探测到，拿弱线索做夹具会测出一条实际上不生效的路径。
+# --------------------------------------------------------------------------
+
+_MQ_SERVICE: dict[str, str] = {
+    "pyproject.toml": (
+        "[project]\n"
+        'name = "mq-service"\n'
+        'version = "0.1.0"\n'
+        "dependencies = [\n"
+        '    "aiokafka>=0.10",\n'
+        '    "asyncpg>=0.29",\n'
+        "]\n"
+    ),
+    ".env.example": "KAFKA_BROKERS=localhost:9092\nDATABASE_URL=postgresql://localhost/app\n",
+    "src/consumer.py": ('"""消费者。"""\n\n\nasync def handle(message):\n    return message\n'),
+}
+
+_WEB_API: dict[str, str] = {
+    "pyproject.toml": (
+        "[project]\n"
+        'name = "web-api"\n'
+        'version = "0.1.0"\n'
+        "dependencies = [\n"
+        '    "sqlalchemy>=2.0",\n'
+        '    "redis>=5.0",\n'
+        "]\n"
+    ),
+    ".env.example": "DATABASE_URL=postgresql://localhost/app\nREDIS_URL=redis://localhost:6379\n",
+    "src/views.py": '"""视图。"""\n\n\ndef index():\n    return "ok"\n',
+}
+
+_BATCH_JOB: dict[str, str] = {
+    "pyproject.toml": (
+        "[project]\n"
+        'name = "batch-job"\n'
+        'version = "0.1.0"\n'
+        "dependencies = [\n"
+        '    "apscheduler>=3.10",\n'
+        '    "boto3>=1.34",\n'
+        "]\n"
+    ),
+    ".env.example": "S3_BUCKET=my-bucket\nAWS_ACCESS_KEY_ID=xxx\n",
+    "src/job.py": '"""批处理。"""\n\n\ndef run():\n    return None\n',
+}
+
+#: 机制探测的三份夹具 → 应该探测到哪些机制
+MECHANISM_FIXTURES: dict[str, tuple[dict[str, str], tuple[str, ...]]] = {
+    "mq-service": (_MQ_SERVICE, ("message-queue", "relational-db")),
+    "web-api": (_WEB_API, ("cache", "relational-db")),
+    "batch-job": (_BATCH_JOB, ("object-storage", "scheduled-job")),
+}
+
 # --------------------------------------------------------------------------
 # CLEAN：一个"什么毛病都没有"的项目
 #

@@ -162,6 +162,37 @@ class MechanismProbe(BaseModel):
         return value
 
 
+class MechanismCell(BaseModel):
+    """矩阵的一个格子：**这个机制 × 这条不变量，要求什么。**
+
+    ## 为什么这个格子是这一层的核心
+
+    它把「按项目类别检查」换成「按机制 × 不变量检查」：
+
+    - 一个聊天系统和一个支付系统，**看起来完全不同**，但抽出来的是同一组不变量
+      （「消息不重复」= 「不能重复扣款」）
+    - 而"会坏的东西"就那么几种（队列、数据库、缓存、长连接……）
+
+    所以检查空间是**可数的**：10 个机制 × 6 条不变量 = 60 个格子，
+    而不是无穷多的项目类别。
+
+    ⚠️ ``checks`` 写的是**要求什么**（给人看的一句话），不是规则 id。
+    规则是"怎么查"，要求是"要查什么" —— 一个格子可能还没有规则覆盖它，
+    而那正是最有价值的信息：**空格子 = 没人管的风险区。**
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    invariant: str = Field(description="不变量 id")
+    checks: list[str] = Field(min_length=1, description="这个组合要求查什么")
+    why: str = Field(default="", description="为什么这个组合重要 —— 会进推理链")
+
+    @field_validator("invariant")
+    @classmethod
+    def _check_invariant(cls, value: str) -> str:
+        return _require_id(value, where="cell.invariant")
+
+
 class Mechanism(BaseModel):
     """一个"会坏的东西"。**不变量说检查什么，机制说怎么检查。**"""
 
@@ -171,6 +202,8 @@ class Mechanism(BaseModel):
     name: str
     why_it_breaks: str
     probes: list[MechanismProbe] = Field(min_length=1)
+    #: 矩阵里这个机制那一行（机制 × 不变量 → 要求什么）
+    cells: list[MechanismCell] = Field(default_factory=list)
 
     @field_validator("id")
     @classmethod
@@ -486,6 +519,7 @@ __all__ = [
     "Invariant",
     "MatrixRef",
     "Mechanism",
+    "MechanismCell",
     "MechanismProbe",
     "ProbeKind",
     "Profile",

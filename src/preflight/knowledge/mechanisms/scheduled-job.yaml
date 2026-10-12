@@ -1,0 +1,42 @@
+id: scheduled-job
+name: 定时任务
+why_it_breaks: 漏跑、重复执行、单点、时区
+probes:
+  - kind: dependency
+    any_of:
+      - apscheduler
+      - celery
+      - rq
+      - huey
+      - dramatiq
+      - arq
+      - schedule
+    why: 调度库出现在依赖里
+  - kind: ast_symbol
+    any_of:
+      - cron
+      - scheduler
+      - periodic_task
+      - add_job
+    why: 代码里出现调度入口
+  - kind: config_file
+    any_of:
+      - CronJob
+      - cronjob
+      - schedule_interval
+    why: k8s CronJob / 编排文件里的定时配置
+
+cells:
+  - invariant: no-loss
+    checks:
+      - 漏跑补偿机制
+    why: "\"**任务漏跑不会有人发现** —— 它不报错，只是没发生。 而\"昨天那批数据呢\"通常要等到对账时才被问到"
+  - invariant: no-duplicate
+    checks:
+      - 重复执行防护（分布式锁 / 幂等）
+    why: 多副本部署时，每个副本都会跑一遍定时任务 ——
+      而单机开发时这个问题不存在
+  - invariant: no-overrun
+    checks:
+      - 执行超时
+    why: 上一轮没跑完、下一轮又开始了，是定时任务最经典的堆积形态

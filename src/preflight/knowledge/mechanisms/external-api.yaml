@@ -1,0 +1,50 @@
+id: external-api
+name: 外部 API
+why_it_breaks: 超时、重试放大、凭证泄漏、对账不平、配额
+probes:
+  - kind: dependency
+    any_of:
+      - stripe
+      - alipay
+      - wechatpay
+      - twilio
+      - sendgrid
+      - slack-sdk
+      - github3
+      - httpx
+      - requests
+    why: 第三方 SDK / HTTP 客户端出现在依赖里
+  - kind: env_template
+    any_of:
+      - STRIPE_API_KEY
+      - ALIPAY_APP_ID
+      - TWILIO_AUTH_TOKEN
+      - WEBHOOK_SECRET
+    why: 第三方凭证是最直接的证据
+  - kind: ast_symbol
+    any_of:
+      - webhook
+      - callback
+    why: 回调入口说明这个项目在收外部事件
+
+cells:
+  - invariant: no-loss
+    checks:
+      - 对账机制
+    why: "\"**外部系统的状态和你自己的状态一定会不一致** —— 问题只是\"多久发现一次"
+  - invariant: no-duplicate
+    checks:
+      - 幂等键
+    why: 超时重试是最常见的写法，而没有幂等键的重试就是重复扣款
+  - invariant: no-unauthorized
+    checks:
+      - 凭证隔离
+    why: 一个服务的凭证泄漏不该让另一个服务也沦陷
+  - invariant: no-leak
+    checks:
+      - 传出去的数据范围
+    why: 为了"让第三方帮我们分析"，常常会把超出必要范围的用户数据发出去
+  - invariant: no-overrun
+    checks:
+      - 配额 / 限流
+    why: 外部 API 的配额是别人定的，撞上去就是整条链路失败

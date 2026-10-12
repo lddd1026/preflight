@@ -1,0 +1,46 @@
+id: multi-region
+name: 多区域
+why_it_breaks: 复制延迟、跨区顺序、数据驻留、跨区带宽
+probes:
+  - kind: config_file
+    any_of:
+      - topologySpreadConstraints
+      - multi_region
+      - aws_region
+      - replica_count
+    why: 编排文件里的区域 / 副本配置
+  - kind: env_template
+    any_of:
+      - AWS_REGION
+      - PRIMARY_REGION
+      - REPLICA_REGIONS
+    why: 区域配置是最直接的证据
+  - kind: doc_claim
+    any_of:
+      - 多区域
+      - 异地多活
+      - 跨区
+      - multi-region
+    why: 文档里声称的多区域部署
+
+cells:
+  - invariant: no-loss
+    checks:
+      - 复制延迟监控
+    why: 主库确认成功 ≠ 副本已经有了 —— 而故障切换时用的是副本
+  - invariant: ordering
+    checks:
+      - 跨区顺序定义
+    why: 跨区没有全局时钟，顺序要靠自己定义
+  - invariant: no-unauthorized
+    checks:
+      - 数据驻留
+    why: 有些数据**按法规不能离开某个区域** —— 而复制是不区分这个的
+  - invariant: no-leak
+    checks:
+      - 跨区传输合规
+    why: 数据出境是一条法规问题，不是技术问题
+  - invariant: no-overrun
+    checks:
+      - 跨区带宽
+    why: 跨区流量按量计费，而它常常是账单里最意外的那一项

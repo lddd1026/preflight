@@ -1,0 +1,50 @@
+id: object-storage
+name: 对象存储
+why_it_breaks: 公开桶、签名 URL 泄漏、分片上传中断、配额
+probes:
+  - kind: dependency
+    any_of:
+      - boto3
+      - minio
+      - google-cloud-storage
+      - azure-storage-blob
+      - oss2
+      - cos-python-sdk
+    why: 对象存储 SDK 出现在依赖里
+  - kind: env_template
+    any_of:
+      - S3_BUCKET
+      - AWS_ACCESS_KEY_ID
+      - MINIO_ENDPOINT
+      - OSS_ENDPOINT
+    why: 桶名 / 凭证是最直接的证据
+  - kind: ast_symbol
+    any_of:
+      - upload_file
+      - put_object
+      - presign
+      - generate_presigned_url
+    why: 代码里的上传 / 签名入口
+
+cells:
+  - invariant: no-loss
+    checks:
+      - 分片续传
+    why: 大文件上传中断之后，是续传还是从头再来？后者在弱网下等于永远传不完
+  - invariant: no-duplicate
+    checks:
+      - 上传去重
+    why: 重试上传会产生多份副本，而计费和清理都按副本算
+  - invariant: no-unauthorized
+    checks:
+      - 签名 URL 过期
+      - 访问控制
+    why: 签名 URL 一旦泄漏就是**无凭证访问** —— 它不需要登录
+  - invariant: no-leak
+    checks:
+      - 公开桶检查
+    why: "\"**公开桶是云上最常见的数据泄漏原因**，而且默认配置经常就是公开的"
+  - invariant: no-overrun
+    checks:
+      - 存储配额
+    why: 日志和备份会无声无息地把配额吃满
