@@ -252,20 +252,54 @@ def _markdown_files() -> list[Path]:
     return [path for path in files if path.is_file()]
 
 
+#: 指向本仓库的 GitHub 绝对链接前缀。
+#:
+#: README 里的链接**必须是绝对的** —— PyPI 上的项目描述就是 README，
+#: 而它不解析相对路径（点 `docs/PITFALLS.md` 会跳到 pypi.org 上的一个 404）。
+#: 但"绝对"不等于"没人守"：这些前缀下的路径可以**离线**还原成仓库内的文件路径。
+_GITHUB_BLOB = "https://github.com/lddd1026/preflight/blob/main/"
+_GITHUB_TREE = "https://github.com/lddd1026/preflight/tree/main/"
+
+
+def _repo_path_of(target: str) -> str | None:
+    """把指向本仓库的 GitHub 链接还原成仓库内路径；别的链接返回 None。"""
+    for prefix in (_GITHUB_BLOB, _GITHUB_TREE):
+        if target.startswith(prefix):
+            return target[len(prefix) :].rstrip("/") or None
+    return None
+
+
 @pytest.mark.parametrize("path", _markdown_files(), ids=lambda p: p.name)
 def test_no_dead_relative_links(path: Path) -> None:
-    """**文档里的相对链接不许有死的。**
+    """**文档里的链接不许有死的** —— 相对的查文件，指向本仓库的绝对的也查。
 
     PLAN 的验收标准就是"交叉引用无死链"。而没有测试守着的文档，
     链接会在某次重命名之后静静地烂掉。
+
+    ## 为什么绝对链接也要查
+
+    README 是 PyPI 上的项目描述，而 PyPI 不解析相对路径 —— 所以 README 里
+    的链接得写成绝对地址（见 ``_GITHUB_BLOB``）。如果这条测试只管相对链接，
+    那 README 一改成绝对地址就**整份文档没人守了**：链接写错、文件被重命名，
+    都不会有人告诉你。
+
+    指向**本仓库**的绝对链接不用联网也能核对 —— 把前缀去掉就是仓库内的路径。
+    指向外部的（别人的文档、徽章）不查：那需要联网，而测试不该依赖网络。
     """
     text = _strip_code(path.read_text(encoding="utf-8"))
     broken: list[str] = []
 
     for match in re.finditer(r"\[[^\]]*\]\(([^)#\s]+)\)", text):
         target = match.group(1)
-        if "://" in target or target.startswith("mailto:"):
+        if target.startswith("mailto:"):
             continue
+
+        if "://" in target:
+            inner = _repo_path_of(target)
+            if inner is not None and not (ROOT / inner).exists():
+                broken.append(f"{target}（指向本仓库，但 {inner} 不存在）")
+            continue
+
         resolved = (path.parent / target).resolve()
         if not resolved.exists():
             broken.append(target)

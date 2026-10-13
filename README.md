@@ -2,8 +2,8 @@
 
 [![ci](https://github.com/lddd1026/preflight/actions/workflows/ci.yml/badge.svg)](https://github.com/lddd1026/preflight/actions/workflows/ci.yml)
 [![pypi](https://img.shields.io/pypi/v/preflight-check-cli)](https://pypi.org/project/preflight-check-cli/)
-[![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
-[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://github.com/lddd1026/preflight/blob/main/pyproject.toml)
+[![license](https://img.shields.io/badge/license-MIT-green)](https://github.com/lddd1026/preflight/blob/main/LICENSE)
 
 **上线前的自动评审。**
 
@@ -86,7 +86,7 @@ preflight-check demo　档案 agent-enterprise　（零 LLM、零联网）
 文档声明。剩下项目特有的部分，**从项目自己的文档里长出来**（agent 读文档，验证
 「文档承诺的」和「代码实现的」是否一致）。
 
-详见 [docs/KNOWLEDGE.md](docs/KNOWLEDGE.md)。
+详见 [docs/KNOWLEDGE.md](https://github.com/lddd1026/preflight/blob/main/docs/KNOWLEDGE.md)。
 
 ## 三种检查的执行顺序
 
@@ -123,8 +123,8 @@ preflight-check demo　档案 agent-enterprise　（零 LLM、零联网）
 | **矩阵覆盖** | 🟡 **3/60** —— 60 个「机制 × 不变量」格子里只有 3 格有规则真的去查（已知的最大缺口） |
 | 阶段 | ✅ 九个阶段（S0–S8）全部达标；四条纪律 D1–D4 每一条都有测试守着 |
 
-开发过程与逐阶段的真实输出见 [docs/PROGRESS.md](docs/PROGRESS.md)，
-当前快照见 [docs/STATUS.md](docs/STATUS.md)。
+开发过程与逐阶段的真实输出见 [docs/PROGRESS.md](https://github.com/lddd1026/preflight/blob/main/docs/PROGRESS.md)，
+当前快照见 [docs/STATUS.md](https://github.com/lddd1026/preflight/blob/main/docs/STATUS.md)。
 
 **现在能跑什么：**
 
@@ -344,7 +344,7 @@ pip install -e ".[dev,tools]"         # 装 pip-audit + ruff
 | S6 | 机制探测 + 矩阵推导（10 机制 × 6 不变量） | ✅ 三份夹具两两不同；推理链含文件行 |
 | S7 | 人工签核 + 豁免 + CI 门禁（4 个档案，必答 5 条） | ✅ 报告可从 JSON 逐字节重建 |
 | S8 | 打包发布（Docker + 离线 demo + 文档一致性） | ⚠️ 干净容器验证过；发布流程跑到上传前一步全绿（sdist + wheel + `twine check`），**未发布 PyPI**（PyPI 侧还没配可信发布者） |
-| S9 | 短文：[我踩过的坑](docs/PITFALLS.md) | ✅ 18 条血案 |
+| S9 | 短文：[我踩过的坑](https://github.com/lddd1026/preflight/blob/main/docs/PITFALLS.md) | ✅ 18 条血案 |
 
 **当前规模**：74 个 Python 文件 · **546 passed + 3 skipped**
 （CI 上每格 **544 + 5**，差的是需要 `fivewhys` 在场的 2 条验收） ·
@@ -396,22 +396,22 @@ preflight-check demo
 
 **收益是它能和 `preflight-gate` 装在同一台机器上而互不影响。**
 
-进度细节见 [docs/PROGRESS.md](docs/PROGRESS.md)。
+进度细节见 [docs/PROGRESS.md](https://github.com/lddd1026/preflight/blob/main/docs/PROGRESS.md)。
 
-> **只想看"现在什么状态"？** → [docs/STATUS.md](docs/STATUS.md)
+> **只想看"现在什么状态"？** → [docs/STATUS.md](https://github.com/lddd1026/preflight/blob/main/docs/STATUS.md)
 > 一份状态快照：数字、九个阶段、四条纪律、未完成的事，**每个数字都给得出复核方式**。
 
 | 文档 | 内容 |
 | --- | --- |
-| [docs/HANDOVER.md](docs/HANDOVER.md) | **交接文档** —— 自足，只读这一份就能接手 |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | **模块划分与扩展指南**：想加功能该动哪一块 |
-| [docs/STATUS.md](docs/STATUS.md) | **状态快照**：现在是什么状态，卡在哪 |
-| [docs/OVERVIEW.md](docs/OVERVIEW.md) | 项目详细介绍：做什么、为什么、边界 |
-| [docs/PLAN.md](docs/PLAN.md) | 模块划分与 9 个阶段的开发计划 |
-| [docs/KNOWLEDGE.md](docs/KNOWLEDGE.md) | 知识本体：不变量 × 机制 矩阵 |
-| [docs/RULES.md](docs/RULES.md) | 规则手册：怎么检测、报什么、怎么修 |
-| [docs/PROGRESS.md](docs/PROGRESS.md) | 开发过程记录与阶段验收结果 |
-| [docs/PITFALLS.md](docs/PITFALLS.md) | 18 条血案 —— 这个项目最值钱的产出 |
+| [docs/HANDOVER.md](https://github.com/lddd1026/preflight/blob/main/docs/HANDOVER.md) | **交接文档** —— 自足，只读这一份就能接手 |
+| [docs/ARCHITECTURE.md](https://github.com/lddd1026/preflight/blob/main/docs/ARCHITECTURE.md) | **模块划分与扩展指南**：想加功能该动哪一块 |
+| [docs/STATUS.md](https://github.com/lddd1026/preflight/blob/main/docs/STATUS.md) | **状态快照**：现在是什么状态，卡在哪 |
+| [docs/OVERVIEW.md](https://github.com/lddd1026/preflight/blob/main/docs/OVERVIEW.md) | 项目详细介绍：做什么、为什么、边界 |
+| [docs/PLAN.md](https://github.com/lddd1026/preflight/blob/main/docs/PLAN.md) | 模块划分与 9 个阶段的开发计划 |
+| [docs/KNOWLEDGE.md](https://github.com/lddd1026/preflight/blob/main/docs/KNOWLEDGE.md) | 知识本体：不变量 × 机制 矩阵 |
+| [docs/RULES.md](https://github.com/lddd1026/preflight/blob/main/docs/RULES.md) | 规则手册：怎么检测、报什么、怎么修 |
+| [docs/PROGRESS.md](https://github.com/lddd1026/preflight/blob/main/docs/PROGRESS.md) | 开发过程记录与阶段验收结果 |
+| [docs/PITFALLS.md](https://github.com/lddd1026/preflight/blob/main/docs/PITFALLS.md) | 18 条血案 —— 这个项目最值钱的产出 |
 
 ## License
 
