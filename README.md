@@ -1,6 +1,7 @@
 # preflight
 
 [![ci](https://github.com/lddd1026/preflight/actions/workflows/ci.yml/badge.svg)](https://github.com/lddd1026/preflight/actions/workflows/ci.yml)
+[![pypi](https://img.shields.io/pypi/v/preflight-check-cli)](https://pypi.org/project/preflight-check-cli/)
 [![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
