@@ -9,13 +9,10 @@
 > CI 告诉你「测试通过了没有」。
 > `preflight` 告诉你「**该做的测试有没有被做过**」。
 
-> **CI 徽章现在是绿的** —— 六格全绿：ubuntu / windows × Python 3.11 / 3.12 / 3.13。
-> **第一次跑就抓到 4 个只在真实环境里出现的失败**：3 条是子进程输出编码
-> （本地是 UTF-8，Windows runner 上直接崩），1 条是 `find_tool` 的断言假设只在
-> 虚拟环境里成立。这 4 条都修了（`3e6ba44`、`d7c084a`），修完 run `38344366412` 六格全绿。
+> **一次运行做完三件事**：确定性检查 → 文档漂移核对 → 人工签核，
+> 并且记住**谁因为什么豁免了哪一条**。
 >
-> 每格是 **544 passed + 5 skipped**；本地是 **546 + 3**。本地多的那 2 条是 S3 的验收测试，
-> 需要旁边的 `fivewhys` 目录在场（`tests/test_acceptance_s3.py`）—— CI 上没有它，所以正确地跳过。
+> 结束时你拿到一份能落到文件里的结论：**这次上线能不能上、谁批的、还差什么。**
 
 ---
 
@@ -114,11 +111,19 @@ preflight-check demo　档案 agent-enterprise　（零 LLM、零联网）
 
 ## 当前状态
 
-🏁 **v0.1 功能面已齐**（S0–S3，29 条规则全部落地）。
-**v0.2**：声明抽取准确率 **89.7%**；证据核对 10/10 编造被拒。
-**v0.3**：一次完整评审可重复运行 —— 4 个档案、**最小必答实测 5 条**、
-豁免带完整审计、报告可从 JSON 逐字节重建。
-详见 [docs/PROGRESS.md](docs/PROGRESS.md)。
+**已发布 `v1.0.1`** —— [GitHub Release](https://github.com/lddd1026/preflight/releases/tag/v1.0.1) ·
+[PyPI](https://pypi.org/project/preflight-check-cli/)（`pip install preflight-check-cli`）。
+
+| 项 | 状态 |
+| --- | --- |
+| CI | ✅ 六格全绿：ubuntu / windows × Python 3.11 / 3.12 / 3.13，每格 `544 passed, 5 skipped`（本地 `546 + 3`） |
+| 类型与风格 | ✅ mypy 44 个文件无错误 · ruff check + format 干净 |
+| 语料 | 29 条规则（**每条都有正例 + 反例夹具**）· 10 机制 × 6 不变量 · 4 个场景档案 · 必答 5 条 |
+| **矩阵覆盖** | 🟡 **3/60** —— 60 个「机制 × 不变量」格子里只有 3 格有规则真的去查（已知的最大缺口） |
+| 阶段 | ✅ 九个阶段（S0–S8）全部达标；四条纪律 D1–D4 每一条都有测试守着 |
+
+开发过程与逐阶段的真实输出见 [docs/PROGRESS.md](docs/PROGRESS.md)，
+当前快照见 [docs/STATUS.md](docs/STATUS.md)。
 
 **现在能跑什么：**
 
