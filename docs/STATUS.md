@@ -3,7 +3,7 @@
 > **这是一份快照，不是叙述。** 它回答「现在是什么状态」，
 > 过程与决策见 [PROGRESS.md](PROGRESS.md)，计划与阶段定义见 [PLAN.md](PLAN.md)。
 >
-> 快照日期：2026-10-11　·　tag：`v1.0.0`　·　工作区：干净
+> 快照日期：2026-10-13　·　tag：`v1.0.0`（已重新指向 `3ac007c`）　·　工作区：干净
 >
 > **每个数字都给得出复核方式** —— 没有一个是估的。
 
@@ -25,37 +25,35 @@
 
 | 项 | 值 | 复核方式 |
 | --- | --- | --- |
-| 提交 | **16** | `git rev-list --count HEAD` |
-| 源码（不含 demo） | **44 个 .py / 13034 行** | `find src -name '*.py' -not -path '*/demo/*'` |
+| 提交 | **24** | `git rev-list --count HEAD` |
+| 源码（不含 demo） | **44 个 .py / 13066 行** | `find src -name '*.py' -not -path '*/demo/*'` |
 | 测试 | **30 个 .py** | `ls tests/*.py` |
 | 演示素材 | 19 个 .py | `find src -path '*/demo/*' -name '*.py'` |
 | 语料 | **52 个 YAML** | `find src -name '*.yaml'` |
-| 文档 | 6 个（见文末） | `ls docs/` |
+| 文档 | 9 个（见文末） | `ls docs/` |
 | CLI 命令 | **15 个** | `preflight-check --help` |
 
 ### 测试
 
-**CI 矩阵有 6 个组合，其中 3 个已经真实跑过。** 没跑过的那 3 个
-需要本机装别的 Python（或者真的要 CI）。
+**CI 矩阵 6 个组合，现在已经全部真跑过，六格全绿**（run `38344366412`，每格 1–2 分钟）。
 
 | 组合 | 结果 |
 | --- | --- |
-| **Windows / Python 3.13**（本地） | ✅ **546 passed + 3 skipped** |
-| **Linux / Python 3.11**（容器） | ✅ **541 + 5 skipped** |
-| **Linux / Python 3.12**（容器） | ✅ **541 + 5 skipped** ← **第一次跑** |
-| Windows / 3.11 | ❌ 没跑过（本机没有这个 Python） |
-| Windows / 3.12 | ❌ 没跑过 |
+| ubuntu / Python 3.11 · 3.12 · 3.13（CI） | ✅ 每格 **544 passed + 5 skipped** |
+| windows / Python 3.11 · 3.12 · 3.13（CI） | ✅ 每格 **544 passed + 5 skipped** |
+| **Windows / Python 3.13**（本地这台机器） | ✅ **546 passed + 3 skipped** |
 | macOS | — CI 里没有这个组合 |
 | mypy | 44 个文件，**无错误** |
 | ruff check / format | **干净** |
 
-> **3.12 是这一轮第一次真的跑起来。** 它一直写在 CI 矩阵里，
-> 而 CI 一次没跑过 —— 所以「声明支持 3.12」这句话之前是**没有证据**的。
->
-> **3.11 也在改名之后重跑了一遍**（之前那个数字是改名前的，
-> 我在上一版里明确标着"不算数"）。
+> **第一次跑就红了 4 条**（run `38342877362`，只红在 windows-latest 上）：
+> 3 条是子进程输出编码只钉了一头 —— 本地是 UTF-8，Windows runner 上直接崩；
+> 1 条是 `find_tool` 的断言假设只在虚拟环境里成立。这 4 条都修了（`3e6ba44`、`d7c084a`）。
+> **这 4 条在本地一条都看不到** —— 这就是 CI 和容器不能互相顶替的原因。
 
-容器里多 2 个 skip 是因为两个适配器冒烟测试的判定条件不同。
+**本地比 CI 多 2 条 passed、少 2 条 skipped**，差额是**同一组测试的两个分支**：
+`tests/test_acceptance_s3.py` 要读兄弟目录 `../fivewhys`，而它不跟着本仓库一起 clone ——
+CI 上没有那个目录，所以那 2 条**正确地跳过**，没有假装通过。
 
 **本地这 3 个 skip 是什么**（`pytest -rs`）：
 
@@ -200,7 +198,7 @@ preflight demo　档案 agent-enterprise　（零 LLM、零联网）
 
 ### 它真的查出过东西
 
-在 [fivewhys](https://github.com/lddd1026/fivewhys) 上跑出来的两条漂移**都是真的**：
+在一个真实项目上跑出来的两条漂移**都是真的**（fivewhys，它现在是**私有仓库**，所以不给链接了）：
 
 > fivewhys 的 `README.md` 写着「依赖约束是**下界 = 实测版本，上界 = 下一个主版本**」——
 > 而它自己的 `pyproject.toml` 里有 **6 个依赖没写上界**。
@@ -213,18 +211,14 @@ preflight demo　档案 agent-enterprise　（零 LLM、零联网）
 
 ### 卡住的（需要你的账号，我做不到）
 
+**只剩一件：**
+
 | # | 事 | 具体要什么 |
 | --- | --- | --- |
-| 1 | **发布 PyPI** | 你的 PyPI 账号 + 可信发布配置。发布工作流已经写好（OIDC，**不需要 token**） |
-| 2 | **CI 从没跑过** | 一个有 git remote 的仓库。工作流配好了（Ubuntu/Windows × 3.11/3.12/3.13），**一次都没执行过** |
-| 3 | **仓库没有备份** | 16 个提交只在这一台机器上 |
+| 1 | **发布 PyPI** | PyPI 侧的**可信发布者**（trusted publisher）配置。发布工作流已经写好（OIDC，**不需要 token**）：run `38345074362` 的 verify 六格全绿、build 绿（sdist + wheel + `twine check`），只有最后一步上传失败 —— `invalid-publisher: valid token, but no corresponding publisher`，**所以什么都没传上去**。GitHub Release 已建，标了 pre-release |
 
-**这三件事是同一条命令的距离**：
-
-```powershell
-git remote add origin https://github.com/lddd1026/preflight.git
-git push -u origin main --tags
-```
+**已经消掉的两件**：仓库已推到 [github.com/lddd1026/preflight](https://github.com/lddd1026/preflight)
+—— 那一条 `git push` 同时解决了 **CI 第一次真跑**和**代码备份**，README 徽章也从灰变绿。
 
 ### 已知的质量问题（技术性的，不需要你）
 
@@ -234,9 +228,9 @@ git push -u origin main --tags
 | 2 | **no YAML 语法 lint** | 同一个坑（值以 `**` 开头会被当成别名引用）**踩了三次** |
 | 3 | 问卷答案**还没接到严重度 / 门禁上** | 目前只进报告 —— 五条答案应该真的改变结论的严厉程度 |
 | 4 | 只在 **2 个真实项目**上验证过（fivewhys + 它自己）+ 若干夹具 | 换一种文档风格表现未知 |
-| 5 | **Windows 上的 3.11 / 3.12 没验证过** | 6 个环境组合里跑过 3 个 |
-| 6 | 探测线索表是手写的 | 换个技术栈（Go / Java）就认不出来 |
-| 7 | `constraint` 映射靠关键词，可能误配 | 实测踩过一次（已收紧词表） |
+| 5 | 探测线索表是手写的 | 换个技术栈（Go / Java）就认不出来 |
+| 6 | `constraint` 映射靠关键词，可能误配 | 实测踩过一次（已收紧词表） |
+| 7 | **`demo` 在中文区域的 Windows 上、输出被重定向时会崩** | `UnicodeEncodeError`：`🔴`/`🟢` 这类 emoji 编不进 cp936 代码页。管道、`> out.txt` 都会撞到（实测）；`PYTHONIOENCODING=utf-8` 下正常。**其余命令（输出里没有 emoji）不受影响** —— `run` / `mechanisms` 在同样条件下正常 |
 
 > **第 1 条有两个数，别混**：矩阵是 10 机制 × 6 不变量 = **60 格**。
 > 其中 **48 格**在机制文件里写了「该查什么」，**12 格**是「无额外要求」；
@@ -307,8 +301,10 @@ all `preflight`」），而两者目标用户完全重叠 —— 同时安装会
 
 ## 一句话总结现状
 
-**开发做完了，验证做了一半，发布一步没走。**
+**开发做完了，验证做完了，发布差最后一步。**
 
 - 「开发做完了」：S0–S8 九个阶段全部达标，四条纪律每一条都有测试在守
-- 「验证做了一半」：本地和 Linux/3.11 跑过；**CI 一次没跑过，3.12 一次没跑过**
-- 「发布一步没走」：wheel 能构建、容器能跑、发布工作流已就绪 —— **只差一个 `git push`**
+- 「验证做完了」：**CI 六格全绿**（ubuntu / windows × 3.11 / 3.12 / 3.13），
+  本地 546 + 3 —— 而**第一次跑就抓到 4 条只在真实 runner 上出现的失败**
+- 「发布差最后一步」：wheel 能构建、容器能跑、发布流程跑到上传前一步全绿 ——
+  **只差在 PyPI 侧配一个可信发布者**
