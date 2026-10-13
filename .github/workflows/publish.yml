@@ -12,9 +12,15 @@ name: publish
 # 结果是**没有可以泄漏的秘密**，而且 PyPI 页面上会显示构建来源
 # （attestation），别人能验证这个包是从哪段代码构建出来的。
 #
-# 要启用它，先在 PyPI 的项目设置里加上：
+# 要启用它，先在 PyPI 上登记一个发布者。项目**还不存在**的时候，是在账号设置里
+# 加一个 "pending publisher"（不是项目设置 —— 项目要等第一次上传才被创建）：
+#     PyPI Project Name: preflight-check-cli
 #     Owner: lddd1026    Repository: preflight
 #     Workflow: publish.yml    Environment: pypi
+#
+# ⚠️ 项目名写错不是"报个错就算了"：PyPI 会先按登记的名字把项目建出来，
+# 再发现上传的元数据名字对不上，于是你会得到一个名字写错的空项目，
+# 得手动删掉再重建登记。而版本号/文件名一旦用过就不能复用。
 #
 # ## 为什么先跑一遍测试
 #

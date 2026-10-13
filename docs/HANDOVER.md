@@ -4,7 +4,7 @@
 > 接手的人（或另一个会话）**只读这一份**就能继续干活。
 > 需要更深的细节时，第 9 节有地图。
 >
-> 交接日期：2026-10-13　·　分支 `main`　·　**24 个提交**　·　tag `v1.0.0`（已重新指向 `3ac007c`）　·　工作区干净
+> 交接日期：2026-10-13　·　分支 `main`　·　**25 个提交**　·　tag `v1.0.1`　·　工作区干净
 
 ---
 
@@ -189,7 +189,13 @@ knowledge      不是代码 —— 全部知识住在这里（52 个 YAML）
 
 | # | 事 | 具体要什么 |
 | --- | --- | --- |
-| 1 | **发布到 PyPI** | PyPI 侧的**可信发布者**（trusted publisher）配置。工作流已就绪（OIDC，**不需要 token**）：run `38345074362` 的 verify 六格全绿、build 绿（sdist + wheel + `twine check`），只有最后一步上传失败 —— `invalid-publisher: valid token, but no corresponding publisher`，**因此什么也没传上去**。GitHub Release 已建，标了 pre-release |
+| 1 | **发布到 PyPI** | 在 PyPI 上登记一个 pending publisher：**PyPI Project Name = `preflight-check-cli`**、Owner `lddd1026`、Repository `preflight`、Workflow `publish.yml`、Environment `pypi`（**五个字段都要一字不差**：前四个对不上报 `invalid-publisher`，项目名对不上会先建出一个名字错的空项目）。工作流已就绪（OIDC，**不需要 token**）：run `38345074362` 的 verify 六格全绿、build 绿（sdist + wheel + `twine check`），只差登记这一步 |
+
+> ⚠️ **分发名为什么是 `preflight-check-cli`**：PyPI 的「名字太相似」检查会把 `-_.` 去掉、
+> 把 `l/i→1`、`o→0` 之后全等比较，而 `preflight-check` 与已存在的 `pre-flight-check`
+> （v1.4.0，活跃的同赛道项目）归一化后完全相同 —— **这个名字注册不了，去掉连字符也不行**。
+> 命令名不受影响，仍然是 `preflight-check`；PyPI 首发版本是 **1.0.1**
+> （v1.0.0 只发在 GitHub）。完整理由见 README「名字」一节。
 
 **已经消掉的两件**：仓库已经推到 GitHub —— 那一条 `git push` 同时解决了
 **CI 第一次真跑**和**代码备份**，README 徽章也从灰变绿。
@@ -251,9 +257,10 @@ knowledge      不是代码 —— 全部知识住在这里（52 个 YAML）
 
 ### 7.5 ⚪ 发布
 
-**前提**：PyPI 侧配好可信发布者（第 6 节唯一剩下的那一件）。
-**动哪里**：不需要改代码 —— 打 tag 就会触发发布工作流（`v1.0.0` 这个 tag 已经推过，
-流程已经跑到上传前一步，只差 PyPI 那一侧的配置）。
+**前提**：在 PyPI 上登记好 `preflight-check-cli` 的 pending publisher（第 6 节唯一剩下的那一件）。
+**动哪里**：不需要改代码 —— 打 tag 就会触发发布工作流。
+**已经做过的**：`v1.0.0` 推过一次，流程跑到上传前一步（verify 六格绿 + build 绿），
+只差 PyPI 那一侧的登记；`v1.0.1` 会带着新的分发名把整条路重跑一遍。
 **注意**：发布**不可逆**（PyPI 的版本号不能复用，删掉也没用）。
 工作流里已经有上传前的元数据校验，别绕过它。
 

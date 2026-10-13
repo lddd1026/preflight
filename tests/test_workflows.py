@@ -225,4 +225,4 @@ def test_version_is_declared_in_exactly_two_places() -> None:
     assert PYPROJECT["project"]["version"] == __version__, (
         f"pyproject 里是 {PYPROJECT['project']['version']}，代码里是 {__version__}"
     )
-    assert __version__ == "1.0.0", "v1.0 的版本号"
+    assert __version__ == "1.0.1", "当前版本号（改版本要同时改这里）"

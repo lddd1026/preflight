@@ -24,7 +24,7 @@
 不配 API Key、不联网、装完就能跑：
 
 ```bash
-pip install preflight-check
+pip install preflight-check-cli
 preflight-check demo
 ```
 
@@ -123,7 +123,7 @@ preflight-check demo　档案 agent-enterprise　（零 LLM、零联网）
 **现在能跑什么：**
 
 ```powershell
-pip install preflight-check           # 或者从源码：pwsh -File scripts/setup.ps1
+pip install preflight-check-cli       # 或者从源码：pwsh -File scripts/setup.ps1
 
 preflight-check version                     # 看版本和语料指纹
 preflight-check demo                        # ⭐ 离线 demo：不配 API Key、不联网就能看到对比
@@ -368,12 +368,26 @@ pip install -e ".[dev,tools]"         # 装 pip-audit + ruff
 | | 名字 |
 | --- | --- |
 | 项目 / 仓库 | `preflight` |
-| 分发（PyPI） | `preflight-check` |
+| 分发（PyPI） | `preflight-check-cli` ← 见下 |
 | 导入包 | `preflight_check` |
 | 命令 | `preflight-check` |
 | 评审记录目录 | `.preflight/` |
 
-**代价是命令变长了**（`preflight-check demo`）—— 那是躲开模块覆盖的价钱。
+**分发名为什么还得带 `-cli`**：`preflight-check` 在 PyPI 上被「名字太相似」挡住了。
+那条检查会把 `-` `_` `.` 全删掉、再把 `l/L/i/I` 换成 `1`、`o/O` 换成 `0`，
+然后**全等比较** —— 而 `preflight-check` 与已存在的
+[`pre-flight-check`](https://pypi.org/project/pre-flight-check/)（v1.4.0，一个活跃的
+AI agent 质量门禁项目）归一化后是**同一个字符串**。去掉连字符也救不了：
+`preflightcheck` 归一化后还是它。
+
+代价只有 `pip install` 那一行 —— **命令名和导入名都没变**
+（这正是「分发名 / 导入名 / 命令名」三个名字本来就分开的好处）：
+
+```bash
+pip install preflight-check-cli
+preflight-check demo
+```
+
 **收益是它能和 `preflight-gate` 装在同一台机器上而互不影响。**
 
 进度细节见 [docs/PROGRESS.md](docs/PROGRESS.md)。

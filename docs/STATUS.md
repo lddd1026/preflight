@@ -3,7 +3,7 @@
 > **这是一份快照，不是叙述。** 它回答「现在是什么状态」，
 > 过程与决策见 [PROGRESS.md](PROGRESS.md)，计划与阶段定义见 [PLAN.md](PLAN.md)。
 >
-> 快照日期：2026-10-13　·　tag：`v1.0.0`（已重新指向 `3ac007c`）　·　工作区：干净
+> 快照日期：2026-10-13　·　tag：`v1.0.1`（分发名见文末「名字」一节）　·　工作区：干净
 >
 > **每个数字都给得出复核方式** —— 没有一个是估的。
 
@@ -25,7 +25,7 @@
 
 | 项 | 值 | 复核方式 |
 | --- | --- | --- |
-| 提交 | **24** | `git rev-list --count HEAD` |
+| 提交 | **25** | `git rev-list --count HEAD` |
 | 源码（不含 demo） | **44 个 .py / 13066 行** | `find src -name '*.py' -not -path '*/demo/*'` |
 | 测试 | **30 个 .py** | `ls tests/*.py` |
 | 演示素材 | 19 个 .py | `find src -path '*/demo/*' -name '*.py'` |
@@ -160,7 +160,7 @@ detect.checker  没有叫 'totally-made-up-checker' 的检查器。
 ## 能跑什么
 
 ```powershell
-pip install preflight-check
+pip install preflight-check-cli
 
 preflight-check demo                    # ⭐ 离线：不配 API Key、不联网就能看到对比
 preflight-check run .                   # 确定性检查（零 LLM）
@@ -255,12 +255,19 @@ all `preflight`」），而两者目标用户完全重叠 —— 同时安装会
 | | 名字 |
 | --- | --- |
 | 项目 / 仓库 | `preflight` |
-| 分发 | `preflight-check` |
+| 分发 | `preflight-check-cli` ← 见下 |
 | 导入包 | `preflight_check` |
 | 命令 | `preflight-check` |
 | 评审记录目录 | `.preflight/` |
 
-**代价是命令变长了**，收益是它能和 `preflight-gate` 装在同一台机器上而互不影响。
+**分发名为什么还带 `-cli`**：`preflight-check` 在 PyPI 上注册不了 —— 那条「名字太相似」
+检查会把 `-` `_` `.` 全删掉、再把 `l/L/i/I` 换成 `1`、`o/O` 换成 `0`，然后**全等比较**，
+而它与已存在的 [`pre-flight-check`](https://pypi.org/project/pre-flight-check/)
+（v1.4.0，活跃的同赛道项目）归一化后是同一个字符串。去掉连字符也救不了
+（`preflightcheck` 归一化后还是它）。
+
+代价只有 `pip install` 那一行 —— **命令名和导入名都没变**，
+收益是它能和 `preflight-gate` 装在同一台机器上而互不影响。
 
 ---
 
