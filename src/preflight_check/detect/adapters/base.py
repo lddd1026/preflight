@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -218,8 +219,17 @@ class Adapter(BaseChecker):
                 cwd=str(ctx.repo.root),
                 capture_output=True,
                 text=True,
+                # ⚠️ 解码口径必须**两头一致**：下面 encoding="utf-8" 说的是
+                # 父进程怎么读，而 _child_env() 说的是子进程怎么写。
+                #
+                # 只钉一半的后果（第一次真 CI 抓到的）：Windows 的 python 子进程
+                # 默认按**控制台代码页**写 stdout（英文机器 cp1252、中文机器 cp936）。
+                # 工具输出里有非 ASCII 字符时，cp1252 下子进程直接 UnicodeEncodeError
+                # 崩掉、**一个字都没输出** —— 而"空输出"在本文件里等于"没发现问题"。
+                # 于是三个测试在 CI 上红了，本地（cp936 编得出中文）却全绿。
                 encoding="utf-8",
                 errors="replace",
+                env=_child_env(),
                 timeout=timeout,
                 check=False,
             )
@@ -307,6 +317,28 @@ class Adapter(BaseChecker):
             source = f"{source}@{version}"
         finding = ctx.finding(message=message, path=path, line=line, evidence=evidence)
         return finding.model_copy(update={"source": source})
+
+
+def _child_env() -> dict[str, str]:
+    """子进程的环境变量 —— **把它的 stdout 编码钉成 UTF-8**。
+
+    父进程按 UTF-8 解码（见 :meth:`Adapter._invoke`），所以子进程也得按 UTF-8 写，
+    否则两头的口径不一致。
+
+    ``PYTHONIOENCODING`` 只影响 **Python** 子进程的 stdio 编码：gitleaks（Go）和
+    ruff（Rust）本来就直接写 UTF-8 字节，不受影响；而本项目编排的
+    ``pip-audit`` 恰好是 Python 写的 —— 它就是这个变量的目标。
+
+    不钉的后果分两档，两档都真的发生过：
+
+    - 轻：输出里的非 ASCII 被 ``errors="replace"`` 换成 U+FFFD，
+      发现里的路径/消息变成乱码，而报告看起来"正常"；
+    - 重：Windows 上英文机器的代码页是 cp1252，子进程写不出中文，
+      直接 ``UnicodeEncodeError`` 崩在写第一行之前 —— **stdout 为空**，
+      而空输出在本文件里的含义是"没发现问题"（见 :meth:`Adapter.parse_json`）。
+      一次真实的崩溃于是被读成一次干净的结果，这正是本模块最想避免的那种错。
+    """
+    return {**os.environ, "PYTHONIOENCODING": "utf-8"}
 
 
 def find_tool(name: str) -> str | None:
