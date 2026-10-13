@@ -1307,7 +1307,39 @@ def _render_demo(
     console.print("[dim]下一步：preflight run <你的项目> 看看你自己缺哪些。[/dim]")
 
 
+def _ensure_utf8_when_redirected() -> None:
+    """输出被重定向时，把 stdout / stderr 钉成 UTF-8。
+
+    ## 为什么（实测出来的，不是理论）
+
+    `preflight-check demo` 的输出里有 emoji（🔴 / 🟢）。在终端里没问题 ——
+    Windows 控制台走的是 console API。但**输出被重定向**时（管道、`> out.txt`、
+    CI 采集），rich 会退回成"按这个流自己的编码写文本"，而那个编码是
+    **控制台代码页**（中文机器 cp936、英文机器 cp1252）—— 两个都编不出 emoji，
+    于是整条命令崩在写第一行之前：
+
+        UnicodeEncodeError: 'gbk' codec can't encode character '\\U0001f534'
+
+    而被重定向恰恰是它最常被用到的场合：写日志、进 CI、`| grep`。
+
+    重定向的目标是文件或管道，那里不存在"用户的终端编码"这回事 ——
+    UTF-8 是唯一合理的默认值。**真正的终端不动它**（rich 对终端处理得更好，
+    而且中文机器上的终端本来就该按本地代码页显示）。
+
+    `errors="replace"` 是第二道保险：宁可输出里多一个替换字符，
+    也不要整条命令崩在写第一行上。生成文件不受影响 —— 那些写文件的调用
+    每一个都显式带了自己的 encoding。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if stream is None or getattr(stream, "isatty", lambda: False)():
+            continue
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def main() -> None:
+    _ensure_utf8_when_redirected()
     app()
 
 

@@ -6,6 +6,9 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -281,3 +284,40 @@ def test_custom_knowledge_dir(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.stdout
     assert "我自己的规则" in result.stdout
     assert "agent/no-request-timeout" not in result.stdout, "自定义语料里没有这条规则"
+
+
+# --------------------------------------------------------------------------
+# 输出被重定向时的编码
+# --------------------------------------------------------------------------
+
+
+def test_demo_survives_a_redirected_output_with_a_legacy_codepage() -> None:
+    """**输出被重定向、而代码页编不出 emoji 时，demo 不能崩。**
+
+    `demo` 的输出里有 🔴 / 🟢。终端里没问题（Windows 控制台走 console API），
+    但重定向时 rich 会按这个流自己的编码写文本，而那是**控制台代码页** ——
+    cp936（中文机器）和 cp1252（英文机器）都编不出 emoji，于是：
+
+        UnicodeEncodeError: 'gbk' codec can't encode character '\\U0001f534'
+
+    整条命令崩在写第一行之前，而"被重定向"恰恰是最常见的用法
+    （写日志、进 CI、`| grep`）。
+
+    这里把子进程的编码**强制成 cp1252** 来复现那个条件 —— 它是英文 Windows 的
+    真实代码页，而且这个复现**在任何机器上都能跑**（不需要一台中文 Windows，
+    Linux 上跑也是同一个条件）。修法见 `cli._ensure_utf8_when_redirected`。
+    """
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+    # tests/* 本来就在 ruff 的 per-file-ignores 里放行了 S603，所以这里不用抑制注释
+    proc = subprocess.run(
+        [sys.executable, "-c", "from preflight_check.cli import main; main()", "demo"],
+        capture_output=True,
+        env=env,
+        timeout=180,
+        check=False,
+    )
+
+    stderr = proc.stderr.decode("utf-8", errors="replace")
+    stdout = proc.stdout.decode("utf-8", errors="replace")
+    assert proc.returncode == 0, f"demo 崩了：\n{stderr[-800:]}"
+    assert "broken-agent" in stdout
