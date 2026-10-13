@@ -412,10 +412,25 @@ def test_find_tool_prefers_the_environment_beside_python() -> None:
     （``E:\\ProgramData\\anaconda3\\Scripts\\ruff.exe``），而 preflight 依赖的
     ruff 装在项目自己的 ``.venv`` 里。先查 PATH 会让**同一条命令在不同机器上
     用了不同版本的工具**，而报告的结论会跟着变。
+
+    ## ⚠️ 改的是断言里的假设，不是实现
+
+    原来断言 ``Path(found).parent == Path(sys.executable).parent``，
+    也就是"工具和 python.exe 在同一层目录"。那只在**虚拟环境**里成立 ——
+    venv 把 python.exe 和入口脚本都塞进 ``Scripts/``。
+    GitHub 的 windows runner 是**非虚拟环境安装**：python 在
+    ``.../x64/python.exe``，控制台脚本在 ``.../x64/Scripts/``。
+    第一次真 CI 就红在这里，而红的是断言里的假设，不是 ``find_tool`` ——
+    它按文档写的顺序找，找到的确实是**同一个环境**里的那一个。
+
+    所以现在断言真正的意图：**工具必须来自 preflight 自己这个环境**，
+    而不是 PATH 上另一个环境的同名工具（那才是这条测试要防的事）。
     """
     found = find_tool("pytest")  # 一定和 preflight 装在同一个环境里
     assert found is not None
-    assert Path(found).parent == Path(sys.executable).parent
+    assert Path(found).resolve().is_relative_to(Path(sys.prefix).resolve()), (
+        f"找到的是别的环境里的工具：{found}（preflight 的环境是 {sys.prefix}）"
+    )
 
 
 def test_find_tool_returns_none_for_nonsense() -> None:
