@@ -25,7 +25,7 @@
 
 | 项 | 值 | 复核方式 |
 | --- | --- | --- |
-| 提交 | **25** | `git rev-list --count HEAD` |
+| 提交 | **25**（截至 tag `v1.0.1`） | `git rev-list --count v1.0.1` |
 | 源码（不含 demo） | **44 个 .py / 13066 行** | `find src -name '*.py' -not -path '*/demo/*'` |
 | 测试 | **30 个 .py** | `ls tests/*.py` |
 | 演示素材 | 19 个 .py | `find src -path '*/demo/*' -name '*.py'` |
