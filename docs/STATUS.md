@@ -3,7 +3,7 @@
 > **这是一份快照，不是叙述。** 它回答「现在是什么状态」，
 > 过程与决策见 [PROGRESS.md](PROGRESS.md)，计划与阶段定义见 [PLAN.md](PLAN.md)。
 >
-> 快照日期：2026-10-13　·　tag：`v1.0.1`（分发名见文末「名字」一节）　·　工作区：干净
+> 快照日期：2026-10-13　·　tag：`v1.0.2`（分发名见文末「名字」一节）　·　工作区：干净
 >
 > **每个数字都给得出复核方式** —— 没有一个是估的。
 
@@ -25,7 +25,7 @@
 
 | 项 | 值 | 复核方式 |
 | --- | --- | --- |
-| 提交 | **25**（截至 tag `v1.0.1`） | `git rev-list --count v1.0.1` |
+| 提交 | **31**（截至 tag `v1.0.2`） | `git rev-list --count v1.0.2` |
 | 源码（不含 demo） | **44 个 .py / 13066 行** | `find src -name '*.py' -not -path '*/demo/*'` |
 | 测试 | **30 个 .py** | `ls tests/*.py` |
 | 演示素材 | 19 个 .py | `find src -path '*/demo/*' -name '*.py'` |
@@ -39,9 +39,9 @@
 
 | 组合 | 结果 |
 | --- | --- |
-| ubuntu / Python 3.11 · 3.12 · 3.13（CI） | ✅ 每格 **544 passed + 5 skipped** |
-| windows / Python 3.11 · 3.12 · 3.13（CI） | ✅ 每格 **544 passed + 5 skipped** |
-| **Windows / Python 3.13**（本地这台机器） | ✅ **546 passed + 3 skipped** |
+| ubuntu / Python 3.11 · 3.12 · 3.13（CI） | ✅ 每格 **545 passed + 5 skipped** |
+| windows / Python 3.11 · 3.12 · 3.13（CI） | ✅ 每格 **545 passed + 5 skipped** |
+| **Windows / Python 3.13**（本地这台机器） | ✅ **547 passed + 3 skipped** |
 | macOS | — CI 里没有这个组合 |
 | mypy | 44 个文件，**无错误** |
 | ruff check / format | **干净** |
@@ -209,16 +209,19 @@ preflight demo　档案 agent-enterprise　（零 LLM、零联网）
 
 ## ⚠️ 未完成的
 
-### 卡住的（需要你的账号，我做不到）
+### 卡住的
 
-**只剩一件：**
+**没有卡住的事了。** 原来那三件（代码托管 / 备份 / 发布）全部消掉了：
 
-| # | 事 | 具体要什么 |
-| --- | --- | --- |
-| 1 | **发布 PyPI** | PyPI 侧的**可信发布者**（trusted publisher）配置。发布工作流已经写好（OIDC，**不需要 token**）：run `38345074362` 的 verify 六格全绿、build 绿（sdist + wheel + `twine check`），只有最后一步上传失败 —— `invalid-publisher: valid token, but no corresponding publisher`，**所以什么都没传上去**。GitHub Release 已建，标了 pre-release |
+| 原来是 | 现在 |
+| --- | --- |
+| 代码托管 | 仓库在 [github.com/lddd1026/preflight](https://github.com/lddd1026/preflight) |
+| 备份 | 同上 —— 工作流、tag、Release 都在上面 |
+| 发布 PyPI | ✅ [preflight-check-cli](https://pypi.org/project/preflight-check-cli/)（当前 1.0.2） |
 
-**已经消掉的两件**：仓库已推到 [github.com/lddd1026/preflight](https://github.com/lddd1026/preflight)
-—— 那一条 `git push` 同时解决了 **CI 第一次真跑**和**代码备份**，README 徽章也从灰变绿。
+> 中间那次 `invalid-publisher` 是**登记还没做**：可信发布要求 PyPI 侧先登记
+> （项目还不存在时是账号设置里的 pending publisher），五个字段一字不差才行。
+> 登记完之后 run `38355169130` 一路绿到上传，还带上了构建来源证明。
 
 ### 已知的质量问题（技术性的，不需要你）
 
@@ -230,7 +233,6 @@ preflight demo　档案 agent-enterprise　（零 LLM、零联网）
 | 4 | 只在 **2 个真实项目**上验证过（fivewhys + 它自己）+ 若干夹具 | 换一种文档风格表现未知 |
 | 5 | 探测线索表是手写的 | 换个技术栈（Go / Java）就认不出来 |
 | 6 | `constraint` 映射靠关键词，可能误配 | 实测踩过一次（已收紧词表） |
-| 7 | **`demo` 在中文区域的 Windows 上、输出被重定向时会崩** | `UnicodeEncodeError`：`🔴`/`🟢` 这类 emoji 编不进 cp936 代码页。管道、`> out.txt` 都会撞到（实测）；`PYTHONIOENCODING=utf-8` 下正常。**其余命令（输出里没有 emoji）不受影响** —— `run` / `mechanisms` 在同样条件下正常 |
 
 > **第 1 条有两个数，别混**：矩阵是 10 机制 × 6 不变量 = **60 格**。
 > 其中 **48 格**在机制文件里写了「该查什么」，**12 格**是「无额外要求」；
@@ -308,10 +310,11 @@ all `preflight`」），而两者目标用户完全重叠 —— 同时安装会
 
 ## 一句话总结现状
 
-**开发做完了，验证做完了，发布差最后一步。**
+**开发做完了，验证做完了，也发布出去了。**
 
 - 「开发做完了」：S0–S8 九个阶段全部达标，四条纪律每一条都有测试在守
 - 「验证做完了」：**CI 六格全绿**（ubuntu / windows × 3.11 / 3.12 / 3.13），
-  本地 546 + 3 —— 而**第一次跑就抓到 4 条只在真实 runner 上出现的失败**
-- 「发布差最后一步」：wheel 能构建、容器能跑、发布流程跑到上传前一步全绿 ——
-  **只差在 PyPI 侧配一个可信发布者**
+  本地 547 + 3 —— 而**第一次跑就抓到 4 条只在真实 runner 上出现的失败**
+- 「发布做完了」：[PyPI](https://pypi.org/project/preflight-check-cli/) 上有包、
+  GitHub 上有 tag 与 Release —— 分发名带了 `-cli` 后缀（PyPI 的名字查重挡了
+  `preflight-check`，见文末「名字」），**命令名一个字母都没变**

@@ -4,8 +4,8 @@
 > 接手的人（或另一个会话）**只读这一份**就能继续干活。
 > 需要更深的细节时，第 9 节有地图。
 >
-> 交接日期：2026-10-13　·　分支 `main`　·　tag `v1.0.1`（那时是第 25 个提交，
-> 复核用 `git rev-list --count v1.0.1` —— **别用 HEAD**，main 上每加一笔它就变）　·　工作区干净
+> 交接日期：2026-10-13　·　分支 `main`　·　tag `v1.0.2`（那时是第 31 个提交，
+> 复核用 `git rev-list --count v1.0.2` —— **别用 HEAD**，main 上每加一笔它就变）　·　工作区干净
 
 ---
 
@@ -55,7 +55,7 @@
 | 纪律 D1–D4 | ✅ D1/D2/D4 完全机械化；D3 一半（有记录的理由） |
 | **持续集成** | ✅ **六格全绿** —— 第一次跑红了 4 条（子进程编码 3 条 + `find_tool` 断言 1 条），修完 run `38344366412` 全绿 |
 | **代码备份** | ✅ 已推到 [github.com/lddd1026/preflight](https://github.com/lddd1026/preflight) |
-| **发布** | 🟡 **只差 PyPI 一侧** —— 制品能构建、干净容器能跑、发布流程跑到上传前一步全绿；PyPI 可信发布者还没配 |
+| **发布** | ✅ [PyPI](https://pypi.org/project/preflight-check-cli/)（当前 1.0.2）+ GitHub 上的 tag 与 Release —— 分发名带了 `-cli` 后缀，命令名不变（见 §6 的说明） |
 | 矩阵覆盖率 | 🟡 **60 格里只有 3 格有规则去查** —— 最大的功能缺口 |
 
 ---
@@ -184,13 +184,13 @@ knowledge      不是代码 —— 全部知识住在这里（52 个 YAML）
 
 ---
 
-## 6. ⚠️ 卡住的事 —— 需要外部输入，我做不到
+## 6. 曾经卡住的三件事 —— 现在都消掉了
 
-**只剩一件：**
-
-| # | 事 | 具体要什么 |
-| --- | --- | --- |
-| 1 | **发布到 PyPI** | 在 PyPI 上登记一个 pending publisher：**PyPI Project Name = `preflight-check-cli`**、Owner `lddd1026`、Repository `preflight`、Workflow `publish.yml`、Environment `pypi`（**五个字段都要一字不差**：前四个对不上报 `invalid-publisher`，项目名对不上会先建出一个名字错的空项目）。工作流已就绪（OIDC，**不需要 token**）：run `38345074362` 的 verify 六格全绿、build 绿（sdist + wheel + `twine check`），只差登记这一步 |
+| 原来是 | 现在 |
+| --- | --- |
+| 代码托管 | [github.com/lddd1026/preflight](https://github.com/lddd1026/preflight) |
+| 备份 | 同上 —— 工作流、tag、Release 都在上面 |
+| 发布 PyPI | ✅ [preflight-check-cli](https://pypi.org/project/preflight-check-cli/)（当前 1.0.2）—— 可信发布走 OIDC，**不需要 token**；PyPI 侧登记一次即可（项目还不存在时是账号设置里的 pending publisher，五个字段要一字不差） |
 
 > ⚠️ **分发名为什么是 `preflight-check-cli`**：PyPI 的「名字太相似」检查会把 `-_.` 去掉、
 > 把 `l/i→1`、`o→0` 之后全等比较，而 `preflight-check` 与已存在的 `pre-flight-check`
@@ -256,12 +256,13 @@ knowledge      不是代码 —— 全部知识住在这里（52 个 YAML）
 **现在**：CI 上 ubuntu / windows × 3.11 / 3.12 / 3.13 **六格全绿** ——
 本机仍然只有 3.13，但那已经不重要了。
 
-### 7.5 ⚪ 发布
+### 7.5 ✅ 已经发布：PyPI + GitHub Release
 
-**前提**：在 PyPI 上登记好 `preflight-check-cli` 的 pending publisher（第 6 节唯一剩下的那一件）。
-**动哪里**：不需要改代码 —— 打 tag 就会触发发布工作流。
-**已经做过的**：`v1.0.0` 推过一次，流程跑到上传前一步（verify 六格绿 + build 绿），
-只差 PyPI 那一侧的登记；`v1.0.1` 会带着新的分发名把整条路重跑一遍。
+**现在是什么样**：PyPI 上是 [preflight-check-cli](https://pypi.org/project/preflight-check-cli/)
+（当前 1.0.2），GitHub 上有 tag 与 Release。打 tag 就会触发发布工作流 ——
+verify 复用 `ci.yml` 六格全绿 → build + `twine check` → OIDC 上传（**不需要 token**）。
+**下次发布要改的地方**：`pyproject.toml` 的 version、`__version__`、以及那条钉住版本号的
+测试（`test_version_is_declared_in_exactly_two_places`），然后打 tag。
 **注意**：发布**不可逆**（PyPI 的版本号不能复用，删掉也没用）。
 工作流里已经有上传前的元数据校验，别绕过它。
 

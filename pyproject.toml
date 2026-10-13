@@ -10,7 +10,7 @@ build-backend = "hatchling.build"
 # 命令名、导入名都不受影响：仍然是 `preflight-check` / `preflight_check`。
 # 完整理由见 README「名字」一节。
 name = "preflight-check-cli"
-version = "1.0.1"
+version = "1.0.2"
 description = "上线前的自动评审：把自动检查、文档漂移和人工签核收拢成一次运行"
 readme = "README.md"
 requires-python = ">=3.11"

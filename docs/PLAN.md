@@ -489,10 +489,12 @@ runtime 被 core / understand 使用
 > 2. `preflight-check demo` 把 `__pycache__/*.pyc` 当文本读 → `UnicodeDecodeError`
 > 3. rich 在 Linux 的 80 列终端里把长路径**折成两行** → 用户复制路径拿到垃圾
 >
-> **PF-48 没有做**，理由是**名字冲突**：`preflight` 的**导入包名和命令名**
-> 都被活跃项目 `preflight-gate` 占用（它的 README 里明写着），
-> 两者同时安装会**静默互相覆盖模块文件**。改名是一次 70+ 文件的机械改动，
-> 不该在发布这一步顺手做。
+> **PF-48 已经做完**（2026-10-13）。名字冲突的解法不是改名，而是**只改分发名**：
+> PyPI 的「名字太相似」检查会把 `-_.` 去掉、把 `l/i→1`、`o→0` 之后全等比较，
+> 而 `preflight-check` 与已存在的 `pre-flight-check` 归一化后完全相同 ——
+> 所以分发名是 `preflight-check-cli`，而**导入包名和命令名一个都没动**。
+> tag `v1.0.0`（只发在 GitHub）/ `v1.0.1` / `v1.0.2`，CI 徽章已绿，
+> `pip install preflight-check-cli` 可用。
 
 **🎯 目标**：陌生人 5 分钟能跑通，并且相信上面的数字。
 

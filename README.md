@@ -112,12 +112,12 @@ preflight-check demo　档案 agent-enterprise　（零 LLM、零联网）
 
 ## 当前状态
 
-**已发布 `v1.0.1`** —— [GitHub Release](https://github.com/lddd1026/preflight/releases/tag/v1.0.1) ·
+**已发布 `v1.0.2`** —— [GitHub Release](https://github.com/lddd1026/preflight/releases/tag/v1.0.2) ·
 [PyPI](https://pypi.org/project/preflight-check-cli/)（`pip install preflight-check-cli`）。
 
 | 项 | 状态 |
 | --- | --- |
-| CI | ✅ 六格全绿：ubuntu / windows × Python 3.11 / 3.12 / 3.13，每格 `544 passed, 5 skipped`（本地 `546 + 3`） |
+| CI | ✅ 六格全绿：ubuntu / windows × Python 3.11 / 3.12 / 3.13，每格 `545 passed, 5 skipped`（本地 `547 + 3`） |
 | 类型与风格 | ✅ mypy 44 个文件无错误 · ruff check + format 干净 |
 | 语料 | 29 条规则（**每条都有正例 + 反例夹具**）· 10 机制 × 6 不变量 · 4 个场景档案 · 必答 5 条 |
 | **矩阵覆盖** | 🟡 **3/60** —— 60 个「机制 × 不变量」格子里只有 3 格有规则真的去查（已知的最大缺口） |
@@ -343,11 +343,11 @@ pip install -e ".[dev,tools]"         # 装 pip-audit + ruff
 | S5 | 证据核对 + 防幻觉 + 文档兑现率 | ✅ 10/10 编造被拒；兑现率 95%（分母 43/204） |
 | S6 | 机制探测 + 矩阵推导（10 机制 × 6 不变量） | ✅ 三份夹具两两不同；推理链含文件行 |
 | S7 | 人工签核 + 豁免 + CI 门禁（4 个档案，必答 5 条） | ✅ 报告可从 JSON 逐字节重建 |
-| S8 | 打包发布（Docker + 离线 demo + 文档一致性） | ⚠️ 干净容器验证过；发布流程跑到上传前一步全绿（sdist + wheel + `twine check`），**未发布 PyPI**（PyPI 侧还没配可信发布者） |
+| S8 | 打包发布（Docker + 离线 demo + 文档一致性） | ✅ 已发布 [PyPI](https://pypi.org/project/preflight-check-cli/)（`preflight-check-cli`）+ GitHub Release；构建与 `twine check` 在 CI 里真跑过 |
 | S9 | 短文：[我踩过的坑](https://github.com/lddd1026/preflight/blob/main/docs/PITFALLS.md) | ✅ 18 条血案 |
 
-**当前规模**：74 个 Python 文件 · **546 passed + 3 skipped**
-（CI 上每格 **544 + 5**，差的是需要 `fivewhys` 在场的 2 条验收） ·
+**当前规模**：74 个 Python 文件 · **547 passed + 3 skipped**
+（CI 上每格 **545 + 5**，差的是需要 `fivewhys` 在场的 2 条验收） ·
 语料 29 条规则 / **10 个机制（矩阵 60 格：48 格写了要求，3 格有规则去查）** /
 6 条不变量 / **4 个档案** /
 5 条必答 + 4 条条件展开 · Docker 镜像可跑 · mypy 全绿。
