@@ -139,6 +139,36 @@ def test_publish_workflow_reuses_ci_instead_of_redefining_it() -> None:
     assert verify["uses"].endswith("ci.yml")
 
 
+def test_a_reused_workflow_declares_workflow_call() -> None:
+    """**被 ``uses:`` 复用的工作流，自己必须声明 ``workflow_call``。**
+
+    ## 为什么这条测试是补上去的
+
+    上面那条守的是「publish **复用**了 ci」这个**意图**，
+    却没守「ci **能被复用**」这个**前提** —— 而 GitHub 的规则是：
+    被调用的工作流必须有 ``workflow_call`` 触发器。
+
+    于是存在一个本地完全看不见的坏状态：测试全绿、YAML 合法、矩阵也齐全，
+    但第一次真推 tag 时，整个发布运行会在**校验阶段**失败。
+
+    > 这正是这个项目反复写的那件事：**没真跑过的路径上，所有断言都还没被验证。**
+    """
+    for path in _all_workflows():
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+        for job_name, job in (loaded.get("jobs") or {}).items():
+            target = job.get("uses")
+            if not isinstance(target, str) or not target.startswith("./"):
+                continue
+            called = WORKFLOWS / Path(target).name
+            assert called.is_file(), f"{path.name} 的 {job_name} 引用了不存在的工作流：{target}"
+            triggers = _triggers(yaml.safe_load(called.read_text(encoding="utf-8")))
+            assert "workflow_call" in triggers, (
+                f"{path.name} 的 {job_name} 用 uses: 调用了 {called.name}，"
+                f"而 {called.name} 没有 workflow_call 触发器 —— "
+                f"推 tag 时会在校验阶段失败，verify 任务连启动都不会"
+            )
+
+
 def test_publish_workflow_uses_trusted_publishing() -> None:
     """**用可信发布，不用 API token。**
 

@@ -40,7 +40,7 @@
 
 | 组合 | 结果 |
 | --- | --- |
-| **Windows / Python 3.13**（本地） | ✅ **545 passed + 3 skipped** |
+| **Windows / Python 3.13**（本地） | ✅ **546 passed + 3 skipped** |
 | **Linux / Python 3.11**（容器） | ✅ **541 + 5 skipped** |
 | **Linux / Python 3.12**（容器） | ✅ **541 + 5 skipped** ← **第一次跑** |
 | Windows / 3.11 | ❌ 没跑过（本机没有这个 Python） |

@@ -7,6 +7,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # ⚠️ publish.yml 用 `uses:` **复用**这个工作流，而被复用的工作流必须声明
+  # workflow_call。少这一行的表现是隐蔽的：本地全部测试依然全绿、YAML 也合法，
+  # 只有真推 tag 时整个发布运行会在**校验阶段**失败（verify 任务连启动都不会）。
+  # 守它的是 tests/test_workflows.py::test_a_reused_workflow_declares_workflow_call
+  workflow_call:
 
 jobs:
   check:
